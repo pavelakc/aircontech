@@ -1089,7 +1089,7 @@
           <div class="form-group"><label>Work Order #<span class="req-mark">*</span></label><input type="text" id="f-workorder" class="required-field" placeholder="e.g. 450772425"></div>
           <div class="form-group">
             <label>Field Report # (auto)</label>
-            <input type="text" id="f-reportnum" class="auto-field" readonly placeholder="Set unit + tech + type">
+            <input type="text" id="f-reportnum" class="auto-field" placeholder="Auto-generated — click to edit" style="cursor:pointer" title="Click to edit report number" onfocus="this.removeAttribute('readonly');this.dataset.locked='true'" onblur="if(!this.value)this.setAttribute('readonly','');window._editingReportNum=this.value||window._editingReportNum">
           </div>
           <div class="form-group">
             <label>Date</label>
@@ -3694,19 +3694,37 @@ function openCopyOfReport(idx) {
   const r = all[idx];
   if (!r) return;
   const copy = JSON.parse(JSON.stringify(r));
-  // Clear identifiers so it saves as new
-  copy.reportNum = '';
-  copy.savedAt = '';
-  copy.workorder = '';
-  copy.notif = '';
+
+  // Keep WO# and Notification# from original
+  // Set date to TODAY (new shift)
+  const today = new Date().toISOString().split('T')[0];
+  copy.date = today;
+
+  // Clear only the unique identifiers
+  copy.reportNum = '';   // will regenerate with new date
+  copy.savedAt   = '';
+  window._editingReportNum = null; // treat as new report
+
   switchView('fr');
   setTimeout(() => {
     populateFormFromReport(copy);
-    // Clear the report number display so it regenerates
+    // Clear lock so number regenerates with new date
     const rnEl = document.getElementById('f-reportnum');
-    if (rnEl) rnEl.value = '';
-    updateReportNumber();
-    snack('📋 Copy opened — fill in WO# and Notification#');
+    if (rnEl) {
+      rnEl.value = '';
+      rnEl.dataset.locked = '';
+    }
+    // Also restore date to today (in case populateFormFromReport overwrote it)
+    const dateEl = document.getElementById('f-date');
+    if (dateEl) {
+      dateEl.value = today;
+      dateEl.dispatchEvent(new Event('change'));
+    }
+    // Regenerate number with today's date
+    setTimeout(() => {
+      updateReportNumber();
+      snack('📋 Copy opened with today\u2019s date — WO# and Notification# kept');
+    }, 100);
   }, 50);
 }
 
