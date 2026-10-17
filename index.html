@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.27</title>
+<title>AirconTech Field Reports v4.28</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1097,7 +1097,7 @@
     flex-shrink:0;user-select:none">
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
-    <span id="app-ver-badge" style="font-size:10px;color:rgba(255,255,255,.4);padding:4px 8px">v4.27</span>
+    <span id="app-ver-badge" style="font-size:10px;color:rgba(255,255,255,.4);padding:4px 8px">v4.28</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -10232,8 +10232,23 @@ function printInhausReport() {
   const win = window.open('', '_blank', 'width=1100,height=800');
   if (!win) { snack('⚠ Allow popups to print'); return; }
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inhaus - ${S(d.frNum)||'Report'}</title>
-    </head><body>${printBody}
+    <style>
+      .ih-print-bar { position:sticky; top:0; z-index:1000; display:flex; gap:10px; align-items:center;
+        background:#e8f4e8; border-bottom:1px solid #3a8a3a; padding:8px 12px; font-family:Arial,sans-serif; }
+      .ih-print-bar button { border:none; border-radius:6px; padding:9px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+      @media print { .ih-print-bar, #scroll-top-btn { display:none !important; } }
+    </style>
+    </head><body>
+    <!-- On a tablet this window has no browser chrome: without this bar the
+         only way out of the print view was closing the whole app. -->
+    <div class="ih-print-bar">
+      <button onclick="window.close(); setTimeout(function(){ history.back(); }, 150);"
+        style="background:#1a3560;color:#fff">&#8592; Back</button>
+      <button onclick="window.print()" style="background:#f0a800;color:#1a3560">&#128424; Print / PDF</button>
+    </div>
+    ${printBody}
 <!-- Scroll to top button -->
 <button id="scroll-top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})"
   style="position:fixed;bottom:80px;right:16px;z-index:999;
@@ -13205,17 +13220,8 @@ function loginAs(role) {
 // ---- what's new ---------------------------------------------------------
 // One or two lines per release, newest first. Add an entry with each version.
 var WHATS_NEW = [
-  { v: '4.27', items: [
-    'Supervisor: reports found by part or unit open with \ud83d\udc41 View; the row shows the part and quantity used.' ] },
-  { v: '4.26', items: [
-    'This message: a short list of what changed, shown once after an update.' ] },
-  { v: '4.25', items: [
-    'Supervisor: search reports by part number, part description or unit.',
-    'Shift change (06:00\u201308:00, 18:00\u201320:00): choose Day or Night when signing in.' ] },
-  { v: '4.23', items: [
-    'The shift chosen at sign-in is used for all your reports that shift.' ] },
-  { v: '4.21', items: [
-    'C3 full? Tips appear, and text typed in CAPITALS can be converted to normal case in one tap.' ] },
+  { v: '4.28', items: [
+    'Inhaus print view: \u2190 Back button at the top to return to the app.' ] },
 ];
 
 function verNum(v) {
@@ -13226,7 +13232,8 @@ function showWhatsNew() {
   const from = localStorage.getItem('aircon_whatsnew_from');
   if (!from) return;
   const cur = (document.getElementById('app-ver-badge')?.textContent || '').replace(/^v/, '');
-  const list = WHATS_NEW.filter(e => verNum(e.v) > verNum(from) && (!cur || verNum(e.v) <= verNum(cur)));
+  // Only the changes of the version being opened, even if versions were skipped.
+  const list = WHATS_NEW.filter(e => e.v === cur && verNum(e.v) > verNum(from));
   if (!list.length) { localStorage.removeItem('aircon_whatsnew_from'); return; }
   document.getElementById('whats-new')?.remove();
   const el = document.createElement('div');
@@ -15099,7 +15106,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.27';
+  const APP_VER = '4.28';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
