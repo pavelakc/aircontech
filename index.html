@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.31</title>
+<title>AirconTech Field Reports v4.32</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.31</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.32</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -1322,7 +1322,7 @@
           <div id="part-set-buttons" style="display:flex;flex-wrap:wrap;gap:6px"></div>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#33415c;text-transform:none;letter-spacing:normal;font-weight:400;font-size:12px;margin-top:8px">
             <input type="checkbox" id="ps-show-others" onchange="ownSetShowOthers(this.checked)">
-            Show others' part sets <span id="ps-others-count" style="color:#999"></span></label>
+            Show others' &amp; old part sets <span id="ps-others-count" style="color:#999"></span></label>
         </div>
       </div>
     </div>
@@ -1346,9 +1346,10 @@
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#33415c;text-transform:none;letter-spacing:normal;font-weight:400">
               <input type="checkbox" id="tpl-show-others" onchange="ownSetShowOthers(this.checked)">
-              Show others' templates <span id="tpl-others-count" style="color:#999"></span></label>
+              Show others' &amp; old templates <span id="tpl-others-count" style="color:#999"></span></label>
             <span id="tpl-old-tools"></span>
           </div>
+          <div id="tpl-applied"></div>
         </div>
         <div class="form-grid cols2">
           <div class="form-group" style="grid-column:span 2">
@@ -5052,6 +5053,7 @@ function findReportIndexById(all, id) {
 }
 
 function saveCurrentReport() {
+  try { ownClearApplied(); } catch (e) {}
   try {
   // Capture whatever is on the Inhaus page right now, even if the technician
   // never switched to it after the last edit.
@@ -7572,7 +7574,7 @@ function applyTemplate(idx) {
   }
   if (tpl.type) setType(tpl.type);
   snack(`✔ Template applied: ${tpl.name}`);
-  try { if (!tpl.owner) setTimeout(() => ownAskOldTemplate(tpl), 300); } catch (e) {}
+  try { ownShowApplied(tpl); } catch (e) {}
 }
 
 function renderPartSetButtons() {
@@ -8525,7 +8527,7 @@ var HELP_BY_ID = {
   'f-c1': 'C1 — the complaint: what was wrong or what was asked for.',
   'f-c2': 'C2 — the cause found.',
   'f-c3': 'C3 — the correction: what was done. The meter shows how much still fits on the printed form.',
-  'template-select': 'Your templates first. Tick “Show others’ templates” below to see everyone’s.',
+  'template-select': 'Your templates. Tick “Show others’ & old templates” below to see everyone’s.',
   'sync-bar': 'Cloud sync status. Tap to sync now.',
   'app-ver-badge': 'App version. Tap to see what’s new.',
 };
@@ -13377,6 +13379,9 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.32', items: [
+    'Templates: only yours are listed; tick \u201cShow others\u2019 & old\u201d to see the rest.',
+    'Used someone else\u2019s or an old template? \u2b50 Keep as mine under the list \u2014 no more pop-up.' ] },
   { v: '4.31', items: [
     'New technician? \u201c\uff0b I\u2019m new\u201d on the sign-in screen: name and badge number, and you are in.',
     'Part or unit not in the list? \u201c\uff0b Add\u201d appears right in the search list.',
@@ -14345,6 +14350,7 @@ function snack(msg) {
 
 function clearForm() {
   if (!confirm('Clear all form data?')) return;
+  try { ownClearApplied(); } catch (e) {}
   ['f-date','f-workorder','f-notif','f-po','f-invoice',
    'f-make','f-model','f-serial','f-category','f-hours',
    'f-c1','f-c2','f-c3','f-remaining','f-approved','f-company','f-approvaldate'].forEach(id => {
@@ -14689,7 +14695,11 @@ function ownGroups(type, arr) {
   (arr || []).forEach((t, i) => {
     if (!t) return;
     if (!me) { g.mine.push(i); return; }
-    if (!t.owner) { g.oldAll.push(i); if (hidden.indexOf(t.name) < 0) g.old.push(i); return; }
+    if (!t.owner) {
+      g.oldAll.push(i);
+      if (hidden.indexOf(t.name) < 0) { g.othersCount++; if (showOthers) g.old.push(i); }
+      return;
+    }
     if (sameTech(t.owner, me)) { g.mine.push(i); return; }
     const a = String(t.owner).trim();
     (g.others[a] = g.others[a] || []).push(i);
@@ -14729,46 +14739,47 @@ function ownRemoveAllOld(type) {
   if (type === 'templates') renderTemplateSelect(); else renderPartSetButtons();
   snack('Old ' + (type === 'templates' ? 'templates' : 'part sets') + ' removed: ' + old.length);
 }
-// After an old template is applied: offer a copy of one's own.
-function ownAskOldTemplate(tpl) {
-  if (!tpl || tpl.owner || !ownMe()) return;
-  if (ownHiddenOld('templates').indexOf(tpl.name) >= 0) return;
-  document.getElementById('own-old-ask')?.remove();
-  const el = document.createElement('div');
-  el.id = 'own-old-ask';
-  el.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(13,27,46,.35);display:flex;align-items:center;justify-content:center;padding:16px';
-  el.innerHTML = '<div style="background:#fff;border-radius:10px;max-width:400px;width:100%;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;color:#1a2b45">' +
-    '<div style="font-weight:800;margin-bottom:6px">Save \u201c' + escapeHtml(tpl.name) + '\u201d to My templates?</div>' +
-    '<div style="font-size:12px;color:#666;margin-bottom:12px">Old template without an author. A copy will be yours; others keep theirs.</div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    '<button type="button" id="own-old-yes" style="flex:1;background:#217a3c;color:#fff;border:none;border-radius:6px;padding:10px;font-weight:700;cursor:pointer">Yes, save as mine</button>' +
-    '<button type="button" id="own-old-no" style="flex:1;background:#888;color:#fff;border:none;border-radius:6px;padding:10px;font-weight:700;cursor:pointer">No, don\u2019t ask again</button>' +
-    '</div></div>';
-  document.body.appendChild(el);
-  el.querySelector('#own-old-yes').onclick = () => {
-    const list = getTemplates();
-    const copy = JSON.parse(JSON.stringify(tpl));
-    copy.owner = ownMe();
-    if (list.some(t => t.name === copy.name && ownIsMine(t))) copy.name = ownFreeName(list, copy.name);
-    list.push(copy);
-    saveTemplates(list);
-    try { dbTouch('templates', dbItemKey('templates', copy)); dbSyncSchedule(); } catch (e) {}
-    ownHideOld('templates', tpl.name);
-    el.remove();
-    renderTemplateSelect();
-    ownToast('\u2714 Saved to My templates: ' + copy.name, '');
-  };
-  el.querySelector('#own-old-no').onclick = () => { ownHideOld('templates', tpl.name); el.remove(); renderTemplateSelect(); };
+// After a template that is not one's own is applied: a quiet line under the
+// template list offers to keep a copy. Nothing pops up, so the technician can
+// first look at what the template filled in.
+var _ownApplied = null;
+function ownShowApplied(tpl) {
+  const box = document.getElementById('tpl-applied');
+  if (!box) return;
+  if (!tpl || !ownMe() || ownIsMine(tpl)) { ownClearApplied(); return; }
+  _ownApplied = tpl;
+  const who = tpl.owner ? String(tpl.owner).split(' ')[0] : 'old';
+  box.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f4f7fb;border:1px dashed #b9c5d6;' +
+    'border-radius:6px;padding:7px 10px;font-size:12.5px;color:#33415c;margin-top:8px">✔ Applied <b>“' + escapeHtml(tpl.name) +
+    '”</b> <span style="color:#8a5a00">(' + escapeHtml(who) + ')</span><span style="margin-left:auto"></span>' +
+    '<button type="button" onclick="ownKeepApplied()" title="Save a copy of this template as your own" style="background:#fff;border:1.5px solid #f0a800;' +
+    'color:#8a5a00;border-radius:5px;padding:4px 10px;font-weight:700;font-size:12px;cursor:pointer">⭐ Keep as mine</button></div>';
+}
+function ownClearApplied() {
+  _ownApplied = null;
+  const box = document.getElementById('tpl-applied');
+  if (box) box.innerHTML = '';
+}
+function ownKeepApplied() {
+  const tpl = _ownApplied;
+  if (!tpl || !ownMe()) return;
+  const list = getTemplates();
+  const copy = JSON.parse(JSON.stringify(tpl));
+  copy.owner = ownMe();
+  if (list.some(t => t.name === copy.name && ownIsMine(t))) copy.name = ownFreeName(list, copy.name);
+  list.push(copy);
+  saveTemplates(list);
+  try { dbTouch('templates', dbItemKey('templates', copy)); dbSyncSchedule(); } catch (e) {}
+  if (!tpl.owner) ownHideOld('templates', tpl.name);
+  renderTemplateSelect();
+  _ownApplied = null;
+  const box = document.getElementById('tpl-applied');
+  if (box) box.innerHTML = '<div style="background:#f2faf4;border:1px solid #9fd3ad;border-radius:6px;padding:7px 10px;font-size:12.5px;color:#1e5c2e;margin-top:8px">' +
+    '✔ <b>“' + escapeHtml(copy.name) + '”</b> is now in My templates</div>';
 }
 function ownToast(title, sub) {
-  document.getElementById('own-toast')?.remove();
-  const el = document.createElement('div');
-  el.id = 'own-toast';
-  el.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:7000;background:#217a3c;color:#fff;' +
-    'border-radius:8px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 6px 18px rgba(0,0,0,.3);max-width:92vw';
-  el.innerHTML = escapeHtml(title) + (sub ? '<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px">' + escapeHtml(sub) + '</div>' : '');
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
+  // The big banner at the top covered the toolbar; the usual message is enough.
+  snack(title);
 }
 
 function renderTemplateSelect() {
@@ -14782,6 +14793,7 @@ function renderTemplateSelect() {
   if (g.flat) html += g.mine.map(i => opt(i)).join('');
   else {
     if (g.mine.length) html += '<optgroup label="My templates">' + g.mine.map(i => opt(i)).join('') + '</optgroup>';
+    else if (!g.showOthers) html += '<option value="" disabled>No templates of your own yet \u2014 tick the box below to see all</option>';
     if (g.old.length) html += '<optgroup label="Old (no author)">' + g.old.map(i => opt(i)).join('') + '</optgroup>';
     if (g.showOthers) Object.keys(g.others).sort().forEach(a =>
       html += '<optgroup label="' + escapeHtml(a) + '">' + g.others[a].map(i => opt(i, ' \u00b7 ' + a.split(' ')[0])).join('') + '</optgroup>');
@@ -15719,7 +15731,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.31';
+  const APP_VER = '4.32';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
