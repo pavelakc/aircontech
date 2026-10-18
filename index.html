@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.28</title>
+<title>AirconTech Field Reports v4.31</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -848,17 +848,9 @@
     50% { opacity:.7; }
   }
 
-  /* Hint captions. Absolutely positioned so switching them on never reflows
-     the toolbar or pushes anything off screen. */
-  body.hints-on button[title], body.hints-on .sidebar-item[title] { position: relative; overflow: visible; }
-  body.hints-on button[title]::after, body.hints-on .sidebar-item[title]::after {
-    content: attr(title);
-    position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
-    margin-top: 3px; background: #1a3560; color: #fff; font-size: 10px;
-    font-weight: 600; line-height: 1.25; padding: 3px 6px; border-radius: 4px;
-    white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
-    pointer-events: none; z-index: 900;
-  }
+  /* Help mode ("?"): the cursor says help, the thing under it is outlined. */
+  body.help-mode, body.help-mode * { cursor: help !important; }
+  body.help-mode .help-target { outline: 3px solid #f0a800 !important; outline-offset: 2px; }
 
   /* Shift-start presets. Pressing one only filled a small box further along
      the row, so nothing on screen said which start had been chosen. */
@@ -1097,7 +1089,8 @@
     flex-shrink:0;user-select:none">
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
-    <span id="app-ver-badge" style="font-size:10px;color:rgba(255,255,255,.4);padding:4px 8px">v4.28</span>
+    <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.31</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -1105,7 +1098,7 @@
        The pill itself is already clickable, but that is not discoverable, so
        the button is spelled out here too. stopPropagation keeps the click
        from also firing the pill's own handler. -->
-  <button id="btn-hints" onclick="event.stopPropagation(); toggleHints()" title="Show a caption under every button"
+  <button id="btn-hints" onclick="event.stopPropagation(); toggleHints()" title="Help mode: point at (or tap) anything to see what it does"
     style="background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:5px;padding:6px 11px;
     font-size:13px;font-weight:700;cursor:pointer;margin-left:8px">?</button>
   <button onclick="event.stopPropagation(); confirmLogout()" title="Sign out"
@@ -1169,6 +1162,9 @@
       <div id="current-user-info" style="display:none;font-size:11px;color:rgba(255,255,255,.7);margin-bottom:8px"></div>
       <!-- Both key items pointed at the same dialog. One Settings entry now,
            with the status badge kept so "not set" is still visible at a glance. -->
+      <div class="sidebar-item" onclick="showWhatsNewHistory()" title="All app updates, newest first">
+        <span class="icon">✨</span>What's new
+      </div>
       <div class="sidebar-item" onclick="showApiKeyDialog()" title="API keys and integrations">
         <span class="icon">⚙️</span>Settings
         <span id="api-key-status" style="margin-left:auto;font-size:10px;color:#aaa">not set</span>
@@ -1211,7 +1207,7 @@
                 style="display:none;margin-left:6px;background:#e8ecf0;border:none;border-radius:4px;
                 padding:1px 7px;font-size:10px;font-weight:700;color:#1a3560;cursor:pointer">↺ auto</button>
             </label>
-            <input type="text" id="f-reportnum" class="auto-field" placeholder="Auto-generated — click to edit" style="cursor:pointer" title="Click to edit report number" onfocus="this.removeAttribute('readonly')" oninput="this.dataset.manualEntry='true';refreshReportNumBtn()" onblur="if(!this.value)this.setAttribute('readonly','')">
+            <input type="text" id="f-reportnum" class="auto-field" placeholder="Auto-generated — tap to edit" style="cursor:pointer" title="Built from the fields automatically. Type to set your own number; \u21ba auto brings the automatic one back." onfocus="this.removeAttribute('readonly')" oninput="this.dataset.manualEntry='true';refreshReportNumBtn()" onblur="if(!this.value)this.setAttribute('readonly','')">
           </div>
           <div class="form-group">
             <label>Date</label>
@@ -1243,7 +1239,7 @@
             <label>Shift</label>
             <div id="dd-shift"></div>
             <div id="shift-choice" style="display:none;margin-top:6px"></div>
-            <span class="auto-fill-hint" onclick="applySyncrudeAutoFill()" title="Determines shift based on report date and current time. Night shift (19:30–07:30) belongs to its start day.">⚡ Auto-fill shift &amp; contact</span>
+            <span class="auto-fill-hint" onclick="applySyncrudeAutoFill()" title="Fills the shift code and contact for the report date, using the shift chosen at sign-in. A night shift belongs to the day it started.">⚡ Auto-fill shift &amp; contact</span>
           </div>
           <div class="form-group"><label>Corresponding Invoice #</label><input type="text" id="f-invoice" placeholder="Invoice number"></div>
         </div>
@@ -1324,6 +1320,9 @@
         <div style="margin-top:12px">
           <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Quick Part Sets</div>
           <div id="part-set-buttons" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#33415c;text-transform:none;letter-spacing:normal;font-weight:400;font-size:12px;margin-top:8px">
+            <input type="checkbox" id="ps-show-others" onchange="ownSetShowOthers(this.checked)">
+            Show others' part sets <span id="ps-others-count" style="color:#999"></span></label>
         </div>
       </div>
     </div>
@@ -1343,6 +1342,12 @@
             <button class="btn-add" onclick="applySelectedTemplate()" style="margin-top:0">📋 Apply</button>
             <button class="btn-add" onclick="deleteSelectedTemplate()" style="margin-top:0;background:#c0392b">✕ Delete</button>
             <button class="btn-add" onclick="saveCurrentAsTemplate()" style="background:#217a3c;margin-top:0">💾 Save as Template</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#33415c;text-transform:none;letter-spacing:normal;font-weight:400">
+              <input type="checkbox" id="tpl-show-others" onchange="ownSetShowOthers(this.checked)">
+              Show others' templates <span id="tpl-others-count" style="color:#999"></span></label>
+            <span id="tpl-old-tools"></span>
           </div>
         </div>
         <div class="form-grid cols2">
@@ -2555,6 +2560,8 @@ function rebuildDropdownsAfterDBSave(type) {
       else if (equip && id === 'unit') dd.setItems(equip);
     });
     if (all || type === 'technicians') { try { fillLoginNames(); } catch (e) {} }
+    if (all || type === 'templates') { try { renderTemplateSelect(); } catch (e) {} }
+    if (all || type === 'partSets')  { try { renderPartSetButtons(); } catch (e) {} }
   } catch (e) { console.warn('rebuildDropdownsAfterDBSave:', e); }
 }
 
@@ -7565,19 +7572,30 @@ function applyTemplate(idx) {
   }
   if (tpl.type) setType(tpl.type);
   snack(`✔ Template applied: ${tpl.name}`);
+  try { if (!tpl.owner) setTimeout(() => ownAskOldTemplate(tpl), 300); } catch (e) {}
 }
 
 function renderPartSetButtons() {
   const c = document.getElementById('part-set-buttons');
   if (!c) return;
   const sets = getPartSets();
-  if (!sets.length) { c.innerHTML = '<span style="font-size:11px;color:var(--muted)">No part sets saved yet</span>'; return; }
-  c.innerHTML = sets.map((s, i) => `
-    <button class="part-set-btn" onclick="applyPartSet(${i})" title="${escapeHtml(s.parts.map(p=>p.partNo).join(', '))}">
-      📦 ${escapeHtml(s.name)}
+  const g = ownGroups('partSets', sets);
+  ownRenderOthersToggle('ps', g);
+  const btn = (i, by) => { const s = sets[i]; return `
+    <button class="part-set-btn" onclick="applyPartSet(${i})" title="${escapeHtml((s.parts||[]).map(p=>p.partNo).join(', '))}">
+      📦 ${escapeHtml(s.name)}${by ? ' <span style="opacity:.6;font-size:10px">\u00b7 ' + escapeHtml(by) + '</span>' : ''}
     </button>
-    <button class="btn-icon" onclick="deletePartSet(${i})" title="Delete" style="font-size:12px;margin-right:4px">✕</button>
-  `).join('');
+    <button class="btn-icon" onclick="deletePartSet(${i})" title="Delete" style="font-size:12px;margin-right:4px">✕</button>`; };
+  const head = (t, col) => `<div style="flex-basis:100%;font-size:10px;font-weight:800;color:${col};text-transform:uppercase;letter-spacing:.5px;margin-top:4px">${escapeHtml(t)}</div>`;
+  let html = '';
+  if (g.flat) html = g.mine.map(i => btn(i)).join('');
+  else {
+    if (g.mine.length) html += g.mine.map(i => btn(i)).join('');
+    if (g.old.length) html += head('Old (no author)', '#8a5a00') + g.old.map(i => btn(i)).join('');
+    if (g.showOthers) Object.keys(g.others).sort().forEach(a => html += head(a, '#777') + g.others[a].map(i => btn(i, a.split(' ')[0])).join(''));
+    if (isSupervisor() && g.oldAll.length) html += `<div style="flex-basis:100%"><button type="button" class="btn-add" onclick="ownRemoveAllOld('partSets')" style="margin-top:4px;padding:4px 10px;font-size:11px;background:#8a5a00">\ud83e\uddf9 Remove all old (${g.oldAll.length})</button></div>`;
+  }
+  c.innerHTML = html || '<span style="font-size:11px;color:var(--muted)">No part sets saved yet</span>';
 }
 
 function applyPartSet(idx) {
@@ -8447,43 +8465,171 @@ function restoreFormSections() {
   toggleFormSections(open);
 }
 
-// ---- Hints ----
-// Hover tooltips do not exist on a phone, so hints are a toggle: turn them on
-// and every control with a title carries a visible caption until turned off.
-// Long-press works as a quick one-off on touch.
-function toggleHints() {
-  const on = !document.body.classList.contains('hints-on');
-  document.body.classList.toggle('hints-on', on);
-  const b = document.getElementById('btn-hints');
-  if (b) {
-    b.style.background = on ? '#f0a800' : 'rgba(255,255,255,.15)';
-    b.style.color = on ? '#1a3560' : '#fff';
+// ---- Help mode ----
+// The old "?" put a caption under every button at once, and the captions sat
+// on top of each other. Now "?" switches on a help mode: point at something
+// (or tap it on a tablet) and a bubble says what it does. While it is on, a
+// tap explains instead of acting, so Delete can be looked at safely.
+var HELP_BY_TEXT = [
+  [/^📋\s*Field Report$/, 'Write or edit a field report.'],
+  [/^💾\s*Saved Reports$/, 'Reports on this device (last 30 days). Older ones are in the Archive there.'],
+  [/^⏱\s*Time Card$/, 'Hours per report for each technician; prints the time card.'],
+  [/^🗄\s*Database$/, 'Parts, technicians, trucks and units — the lists everyone shares.'],
+  [/^🔥\s*Inhaus Report$/, 'Cylinder and hose inspection sheet for the unit in this report.'],
+  [/^⚠️\s*FLRA$/, 'Field level risk assessment card.'],
+  [/^📊\s*Supervisor$/, 'Reports, hours and parts across all technicians.'],
+  [/^(📋\s*Header Info|🚜\s*Equipment|🔧\s*Parts Used|📝\s*Work|👷\s*Technicians|✅\s*Status)$/, 'Jump to this section of the report.'],
+  [/^💾\s*Save Report$/, 'Saves the whole report, with its Inhaus, on this device and to the cloud.'],
+  [/^🗑\s*Clear Form$/, 'Empties the form for a new report. Saved reports are not touched.'],
+  [/^📤\s*Export Data$/, 'Downloads all reports and lists as a backup file.'],
+  [/^📥\s*Import Data$/, 'Loads a backup file made with Export Data.'],
+  [/^📊\s*Excel$/, 'Downloads this report as an Excel file.'],
+  [/^✚\s*New$/, 'Starts a new report.'],
+  [/^💾\s*Save/, 'Saves the whole report, with its Inhaus.'],
+  [/^👁$/, 'Preview of the printed report (PDF).'],
+  [/^🖨\s*Print/, 'Prints the report as a PDF.'],
+  [/^🔥\s*System$/, 'Fire suppression system set up for this unit.'],
+  [/^＋\s*Add Part$/, 'Adds an empty part row.'],
+  [/^📋\s*Apply$/, 'Fills C1, C2, C3 and parts from the template picked on the left.'],
+  [/^✕\s*Delete$/, 'Deletes the template picked on the left. Only your own; old ones without an author are just hidden from your list.'],
+  [/^💾\s*Save as Template$/, 'Saves C1, C2, C3 and the parts of this report as your template.'],
+  [/^💾\s*Save as Part Set$/, 'Saves the parts of this report as your part set.'],
+  [/^📦\s/, 'Adds the parts of this part set to the report.'],
+  [/^✨\s*AI Generate$/, 'Drafts C1, C2, C3 from your past reports.'],
+  [/^[+＋]\s*Add Technician$/i, 'Adds another technician.'],
+  [/^[✕×]$/, 'Removes this line.'],
+  [/^✓\s*Completed$|^⏳\s*Incomplete$/, 'Job status printed on the report.'],
+  [/^HVAC$|^F\/S$/, 'Type of work: HVAC or Fire Suppression.'],
+  [/^Today$/, 'Sets the time card date to today.'],
+  [/^⚡\s*Distribute 12h/, 'Splits a 12-hour shift evenly across the reports in the time card.'],
+  [/^📦\s*Print Shift Package/, 'One PDF with the time card and every report of the shift.'],
+  [/^🔧\s*Parts$|^👷\s*Technicians$|^🚛\s*Trucks$|^🚜\s*Units$/, 'Opens this list for editing.'],
+  [/^💾\s*Save All$/, 'Saves the list being edited and sends it to the other devices.'],
+  [/^↻\s*Sync Now$/, 'Exchanges lists and reports with the cloud right now.'],
+  [/^＋\s*Add Tank$/, 'Adds a tank to this section.'],
+  [/^＋\s*Add (LT30 )?Row$/, 'Adds a cylinder row to this section.'],
+  [/^＋\s*Add Inspector$/, 'Adds an inspector line.'],
+  [/^🖨\s*Print Inhaus Report$/, 'Prints the Inhaus sheet.'],
+  [/^📦\s*Archive/, 'Reports older than 30 days, kept in the cloud. Opens on demand.'],
+  [/^Load$/, 'Opens this saved report in the form.'],
+  [/^✨\s*What's new$/, 'Every app update, newest first.'],
+  [/^⚙️\s*Settings/, 'API keys and integrations.'],
+  [/^🚪\s*Logout$/, 'Signs out of the app.'],
+];
+var HELP_BY_ID = {
+  'f-reportnum': 'Report number. Built from the fields automatically; type to set your own.',
+  'f-date': 'Report date. A night shift belongs to the day it started.',
+  'f-workorder': 'Work Order number from the customer.',
+  'f-notif': 'Notification number from the customer.',
+  'f-hours': 'Machine hours (SMU).',
+  'f-c1': 'C1 — the complaint: what was wrong or what was asked for.',
+  'f-c2': 'C2 — the cause found.',
+  'f-c3': 'C3 — the correction: what was done. The meter shows how much still fits on the printed form.',
+  'template-select': 'Your templates first. Tick “Show others’ templates” below to see everyone’s.',
+  'sync-bar': 'Cloud sync status. Tap to sync now.',
+  'app-ver-badge': 'App version. Tap to see what’s new.',
+};
+function helpText(el) {
+  if (!el) return null;
+  const t = (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ');
+  const head = t.length > 40 ? t.slice(0, 40) + '…' : t;
+  if (el.dataset && el.dataset.help) return { head, body: el.dataset.help };
+  if (el.id && HELP_BY_ID[el.id]) return { head: helpLabelFor(el) || head, body: HELP_BY_ID[el.id] };
+  const title = el.getAttribute('data-title-off') || el.getAttribute('title');
+  if (title) return { head, body: title };
+  for (const [re, txt] of HELP_BY_TEXT) if (re.test(t)) return { head, body: txt };
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+    const l = helpLabelFor(el);
+    if (l) return { head: l, body: el.placeholder ? 'e.g. ' + el.placeholder : 'Fill in ' + l + '.' };
   }
-  try { localStorage.setItem('aircon_hints_on', on ? '1' : '0'); } catch (e) {}
+  return null;
 }
-
+function helpLabelFor(el) {
+  const g = el.closest('.form-group');
+  const l = g && g.querySelector('label');
+  return l ? (l.innerText || l.textContent || '').replace(/\*/g, '').trim().split('\n')[0] : '';
+}
+function helpTargetOf(node) {
+  let el = node && node.closest ? node.closest('button, a, .sidebar-item, input, select, textarea, [title], [data-help], .part-set-btn') : null;
+  while (el && !helpText(el)) el = el.parentElement ? el.parentElement.closest('button, a, .sidebar-item, [title], [data-help]') : null;
+  return el;
+}
+function helpHide() {
+  document.getElementById('help-bubble')?.remove();
+  document.querySelectorAll('.help-target').forEach(e => e.classList.remove('help-target'));
+}
+function helpShow(el) {
+  helpHide();
+  const h = helpText(el);
+  if (!h) return;
+  el.classList.add('help-target');
+  const b = document.createElement('div');
+  b.id = 'help-bubble';
+  const r = el.getBoundingClientRect();
+  const below = r.bottom + 120 < window.innerHeight;
+  b.style.cssText = 'position:fixed;z-index:9500;background:#1a2b45;color:#fff;border-radius:8px;padding:9px 12px;' +
+    'font-size:12.5px;line-height:1.45;max-width:260px;box-shadow:0 6px 18px rgba(0,0,0,.35);pointer-events:none;' +
+    'left:' + Math.max(8, Math.min(r.left, window.innerWidth - 272)) + 'px;' +
+    (below ? 'top:' + (r.bottom + 8) + 'px' : 'bottom:' + (window.innerHeight - r.top + 8) + 'px');
+  b.innerHTML = (h.head ? '<div style="color:#f0c36d;font-weight:700;margin-bottom:2px">' + escapeHtml(h.head) + '</div>' : '') + escapeHtml(h.body);
+  document.body.appendChild(b);
+}
+function helpExempt(node) {
+  return !!(node && node.closest && node.closest('#help-bar, #btn-hints'));
+}
+function toggleHints(force) {
+  const on = force !== undefined ? !!force : !document.body.classList.contains('help-mode');
+  document.body.classList.toggle('help-mode', on);
+  const b = document.getElementById('btn-hints');
+  if (b) { b.style.background = on ? '#f0a800' : 'rgba(255,255,255,.15)'; b.style.color = on ? '#1a3560' : '#fff'; }
+  // Native tooltips would pop up on top of the bubble; park them while on.
+  document.querySelectorAll(on ? '[title]' : '[data-title-off]').forEach(e => {
+    if (e.id === 'btn-hints') return;
+    if (on) { e.setAttribute('data-title-off', e.getAttribute('title')); e.removeAttribute('title'); }
+    else { e.setAttribute('title', e.getAttribute('data-title-off')); e.removeAttribute('data-title-off'); }
+  });
+  let bar = document.getElementById('help-bar');
+  if (on && !bar) {
+    bar = document.createElement('div');
+    bar.id = 'help-bar';
+    bar.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9400;background:#f0a800;color:#1a3560;font-weight:700;' +
+      'font-size:13px;padding:8px 14px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.2)';
+    bar.innerHTML = '<span style="flex:1">❓ Help mode — point at (or tap) anything to see what it does</span>' +
+      '<button type="button" onclick="toggleHints(false)" style="background:#1a3560;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-weight:700;cursor:pointer">✕ Exit</button>';
+    // Just under the top bar, so the "?" button stays visible.
+    const hb = document.getElementById('btn-hints');
+    const top = hb ? Math.max(0, (hb.closest('header, .topbar, .app-header') || hb.parentElement).getBoundingClientRect().bottom) : 0;
+    bar.style.top = top + 'px';
+    document.body.appendChild(bar);
+  } else if (!on && bar) bar.remove();
+  if (!on) helpHide();
+}
 (function () {
-  let timer = null, bubble = null;
-  const hide = () => { if (bubble) { bubble.remove(); bubble = null; } clearTimeout(timer); };
-  document.addEventListener('pointerdown', e => {
-    const el = e.target.closest?.('[title]');
-    if (!el || !el.getAttribute('title')) return;
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      hide();
-      bubble = document.createElement('div');
-      bubble.textContent = el.getAttribute('title');
-      const r = el.getBoundingClientRect();
-      bubble.style.cssText = 'position:fixed;z-index:3000;background:#1a3560;color:#fff;' +
-        'padding:7px 11px;border-radius:6px;font-size:12px;max-width:240px;line-height:1.4;' +
-        'box-shadow:0 3px 12px rgba(0,0,0,.35);pointer-events:none;' +
-        'left:' + Math.max(8, Math.min(r.left, window.innerWidth - 250)) + 'px;' +
-        'top:' + (r.bottom + 6) + 'px';
-      document.body.appendChild(bubble);
-    }, 600);
+  const swallow = e => {
+    if (!document.body.classList.contains('help-mode') || helpExempt(e.target)) return;
+    e.preventDefault(); e.stopPropagation();
+  };
+  // A tap or click explains instead of acting.
+  document.addEventListener('mousedown', swallow, true);
+  document.addEventListener('pointerdown', swallow, true);
+  document.addEventListener('click', e => {
+    if (!document.body.classList.contains('help-mode') || helpExempt(e.target)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    const t = helpTargetOf(e.target);
+    if (t) helpShow(t); else helpHide();
   }, true);
-  ['pointerup', 'pointercancel', 'pointermove', 'scroll'].forEach(ev =>
-    document.addEventListener(ev, hide, true));
+  // With a mouse, pointing is enough.
+  document.addEventListener('mouseover', e => {
+    if (!document.body.classList.contains('help-mode') || helpExempt(e.target)) return;
+    const t = helpTargetOf(e.target);
+    if (t && !t.classList.contains('help-target')) helpShow(t);
+    else if (!t) helpHide();
+  }, true);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.body.classList.contains('help-mode')) toggleHints(false);
+  });
+  window.addEventListener('scroll', () => { if (document.getElementById('help-bubble')) helpHide(); }, true);
 })();
 
 async function tcDistribute12h() {
@@ -9068,9 +9214,9 @@ function openPrintWindow(bodyContent, title) {
         font-size:14px;font-weight:700;cursor:pointer">&#8592; Back</button>
       <button onclick="window.print()"
         style="background:#f0a800;color:#1a3560;border:none;border-radius:6px;padding:9px 16px;
-        font-size:14px;font-weight:700;cursor:pointer">&#128424; Печать / PDF</button>
-      <span style="flex:1;min-width:200px">&#9989; Колонтитулы (URL и страница) уже <b>отключены</b> через CSS.
-      Если всё равно видны — нажмите <b>Подробнее</b> в диалоге печати и снимите галочку <b>«Печатать колонтитулы»</b>.</span>
+        font-size:14px;font-weight:700;cursor:pointer">&#128424; Print / PDF</button>
+      <span style="flex:1;min-width:200px">&#9989; Headers and footers (URL and page number) are already <b>turned off</b>.
+      If they still show, open <b>More settings</b> in the print dialog and untick <b>Headers and footers</b>.</span>
     </div>
     <div class="wrap">${bodyContent}</div>
     <script>setTimeout(function(){ window.print(); }, 900);<\/script>
@@ -12194,7 +12340,7 @@ function renderDBTable(type) {
             title="System family, type, role and quantity rule"
             style="${item.sysFamily ? 'background:#1a3560;color:#fff' : ''}">${item.sysFamily || '\u2014'}</button></td>
         <td style="padding:5px 8px;white-space:nowrap">
-          <button onclick="dbCopyItem('${type}',${i})" class="db-action-btn" title="Duplicate row">⧉ Dup</button>
+          ${quickAddTag(item)}<button onclick="dbCopyItem('${type}',${i})" class="db-action-btn" title="Duplicate row">⧉ Dup</button>
           <button onclick="dbRemoveItem('${type}',${i})" class="db-action-btn db-danger" title="Delete">🗑</button>
         </td>
       </tr>`;
@@ -12255,7 +12401,7 @@ function renderDBTable(type) {
           <button onclick="openFSEditor('${escapeHtml(it.unit||'')}')" class="db-action-btn"
             title="${fsIsEmpty(it.fs) ? 'No fire system configured' : escapeHtml(fsSummary(it.fs))}"
             style="${fsIsEmpty(it.fs) ? '' : 'background:#1a3560;color:#fff'}">🔥 FS</button>
-          <button onclick="dbCopyItem('${type}',${i})" class="db-action-btn" title="Duplicate row">⧉ Dup</button>
+          ${quickAddTag(it)}<button onclick="dbCopyItem('${type}',${i})" class="db-action-btn" title="Duplicate row">⧉ Dup</button>
           <button onclick="dbRemoveItem('${type}',${i})" class="db-action-btn db-danger" title="Delete">🗑</button>
         </td>
       </tr>`;
@@ -12323,6 +12469,12 @@ function dbItemKey(type, item) {
   if (typeof item === 'string') return item.trim();
   if (type === 'parts') return (item.partNo || '').trim();
   if (type === 'equipment') return (item.unit || '').trim();
+  // Templates and part sets with an author are keyed by name + author, so two
+  // technicians saving the same name no longer overwrite each other. Older
+  // ones without an author keep the plain name key they were synced under.
+  if ((type === 'templates' || type === 'partSets') && item.owner) {
+    return String(item.name || '').trim() + ' @' + String(item.owner).trim();
+  }
   return (item.name || item.unit || item.partNo || JSON.stringify(item)).toString().trim();
 }
 
@@ -13190,6 +13342,8 @@ function loginAs(role) {
       setTimeout(() => { shiftGrp.style.outline = ''; }, 1500);
       return;
     }
+    if (role === 'supervisor' && !window._supPassOk) { supAskPassword(); return; }
+    window._supPassOk = false;           // asked again on every supervisor sign-in
     currentUser = { name, role };
     if (window._loginShiftType) {
       currentUser.shiftType = window._loginShiftType;
@@ -13213,15 +13367,38 @@ function loginAs(role) {
     try { applyUserRole(); } catch(e){}
     try { if(typeof initGroqKeySidebar==='function') initGroqKeySidebar(); } catch(e){}
     snack('Welcome, ' + name + '!');
-    try { setTimeout(showWhatsNew, 600); } catch (e) {}
+    try { renderTemplateSelect(); renderPartSetButtons(); } catch (e) {}
+  try { setTimeout(showWhatsNew, 600); } catch (e) {}
   } catch(err) { console.error('loginAs:',err); alert('Login error: '+err.message); }
 }
 
 // ---- what's new ---------------------------------------------------------
 // One or two lines per release, newest first. Add an entry with each version.
+// Full history, newest first. The one-time popup shows only the entry for the
+// version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.31', items: [
+    'New technician? \u201c\uff0b I\u2019m new\u201d on the sign-in screen: name and badge number, and you are in.',
+    'Part or unit not in the list? \u201c\uff0b Add\u201d appears right in the search list.',
+    '\u201c?\u201d is now a help mode: point at (or tap) anything to see what it does.' ] },
+  { v: '4.30', items: [
+    '\u2728 What\u2019s new in the menu (or tap the version number): every update, newest first.' ] },
+  { v: '4.29', items: [
+    'Templates and part sets: yours are listed first; tick \u201cShow others\u2019\u201d to see everyone else\u2019s.',
+    'Old templates without an author: after applying one you can save a copy as your own.' ] },
   { v: '4.28', items: [
     'Inhaus print view: \u2190 Back button at the top to return to the app.' ] },
+  { v: '4.27', items: [
+    'Supervisor: reports found by part or unit open with \ud83d\udc41 View; the row shows the part and quantity used.' ] },
+  { v: '4.26', items: [
+    'A short \u201cWhat\u2019s new\u201d message is shown once after an update.' ] },
+  { v: '4.25', items: [
+    'Supervisor: search reports by part number, part description or unit.',
+    'Shift change (06:00\u201308:00, 18:00\u201320:00): choose Day or Night when signing in.' ] },
+  { v: '4.23', items: [
+    'The shift chosen at sign-in is used for all your reports that shift.' ] },
+  { v: '4.21', items: [
+    'C3 full? Tips appear, and text typed in CAPITALS can be converted to normal case in one tap.' ] },
 ];
 
 function verNum(v) {
@@ -13254,9 +13431,264 @@ function showWhatsNew() {
   document.body.appendChild(el);
 }
 
+function showWhatsNewHistory() {
+  const cur = (document.getElementById('app-ver-badge')?.textContent || '').replace(/^v/, '');
+  document.getElementById('whats-new')?.remove();
+  const el = document.createElement('div');
+  el.id = 'whats-new';
+  el.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(13,27,46,.45);display:flex;' +
+    'align-items:center;justify-content:center;padding:16px';
+  el.onclick = e => { if (e.target === el) el.remove(); };
+  el.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:460px;width:100%;max-height:82vh;overflow:auto;' +
+      'box-shadow:0 10px 40px rgba(0,0,0,.35);padding:18px 20px;font-size:14px;color:#1a2b45">' +
+      '<div style="font-size:18px;font-weight:800;color:#1a3560;margin-bottom:2px">\u2728 What\u2019s new</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:8px">You have v' + escapeHtml(cur) + '. Newest first.</div>' +
+      WHATS_NEW.filter(e => !cur || verNum(e.v) <= verNum(cur)).map(e =>
+        '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;color:' + (e.v === cur ? '#217a3c' : '#b35400') + '">v' +
+          escapeHtml(e.v) + (e.v === cur ? ' \u00b7 current' : '') + '</div>' +
+        e.items.map(t => '<div style="margin:3px 0 3px 4px;line-height:1.4">\u2022 ' + escapeHtml(t) + '</div>').join('')).join('') +
+      '<button type="button" onclick="document.getElementById(\'whats-new\').remove()" style="margin-top:14px;width:100%;background:#1a3560;color:#fff;' +
+        'border:none;border-radius:8px;padding:11px;font-size:15px;font-weight:700;cursor:pointer">Close</button>' +
+    '</div>';
+  document.body.appendChild(el);
+}
+
 function closeWhatsNew() {
   localStorage.removeItem('aircon_whatsnew_from');
   document.getElementById('whats-new')?.remove();
+}
+
+// ── Quick add: part or unit missing from the list ───────────────────────
+function quickAddKind(id) {
+  if (id === 'unit') return 'unit';
+  if (/^part-\d+$/.test(id)) return 'part';
+  return '';
+}
+function quickAddNorm(v) { return String(v || '').toUpperCase().replace(/[\s\-_.\/]/g, ''); }
+function quickAddTag(item) {
+  if (!item || typeof item !== 'object' || !item.addedBy) return '';
+  return '<span class="db-action-btn" title="Added from a report by ' + escapeHtml(item.addedBy) +
+    (item.addedAt ? ' on ' + escapeHtml(String(item.addedAt).slice(0, 10)) : '') +
+    '" style="background:#fff4e0;color:#8a5a00;cursor:help">\ud83c\udd95</span> ';
+}
+function quickAddOpen(ddId, text) {
+  const kind = quickAddKind(ddId);
+  if (!kind) return;
+  document.getElementById('quick-add')?.remove();
+  const el = document.createElement('div');
+  el.id = 'quick-add';
+  el.style.cssText = 'position:fixed;inset:0;z-index:6500;background:rgba(13,27,46,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  const lab = t => '<div style="font-size:11px;font-weight:700;color:#1a3560;letter-spacing:.6px;text-transform:uppercase;margin:10px 0 4px">' + t + '</div>';
+  const inp = (id, v, extra) => '<input id="' + id + '" value="' + escapeHtml(v || '') + '" autocomplete="off" ' + (extra || '') +
+    ' style="width:100%;padding:9px 11px;border:1.5px solid #c7cfdb;border-radius:7px;font-size:14px;box-sizing:border-box">';
+  let body;
+  if (kind === 'part') {
+    body = '<div style="font-size:17px;font-weight:800;color:#1a3560">\ud83d\udd27 Add part</div>' +
+      lab('Part No. *') + inp('qa-a', text.toUpperCase()) + lab('Description') + inp('qa-b', '') +
+      lab('Unit of measure') + '<select id="qa-c" style="width:100%;padding:9px 11px;border:1.5px solid #c7cfdb;border-radius:7px;font-size:14px">' +
+      (typeof PART_UNIT_OPTIONS !== 'undefined' ? PART_UNIT_OPTIONS : ['']).map(u => '<option value="' + u + '">' + (u || '\u2014') + '</option>').join('') + '</select>';
+  } else {
+    const cats = Array.from(new Set((getEquipmentDB() || []).map(e => e && e.category).filter(Boolean))).sort();
+    body = '<div style="font-size:17px;font-weight:800;color:#1a3560">\ud83d\ude9c Add unit</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' +
+      '<div>' + lab('Unit # *') + inp('qa-a', text.toUpperCase()) + '</div><div>' + lab('Make') + inp('qa-b', '') + '</div>' +
+      '<div>' + lab('Model') + inp('qa-c', '') + '</div><div>' + lab('Serial') + inp('qa-d', '') + '</div></div>' +
+      lab('Category') + '<select id="qa-e" style="width:100%;padding:9px 11px;border:1.5px solid #c7cfdb;border-radius:7px;font-size:14px"><option value="">\u2014</option>' +
+      cats.map(c => '<option>' + escapeHtml(c) + '</option>').join('') + '</select>';
+  }
+  el.innerHTML = '<form style="background:#fff;border-radius:12px;max-width:400px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
+    body + '<div id="qa-msg"></div>' +
+    '<button type="submit" style="width:100%;margin-top:14px;background:#217a3c;color:#fff;border:none;border-radius:8px;padding:11px;font-size:15px;font-weight:700;cursor:pointer">Add and use</button>' +
+    '<button type="button" id="qa-cancel" style="width:100%;background:none;border:none;color:#888;padding:9px;font-size:13px;cursor:pointer">Cancel</button></form>';
+  document.body.appendChild(el);
+  setTimeout(() => (el.querySelector('#qa-b') || el.querySelector('#qa-a')).focus(), 50);
+  el.querySelector('#qa-cancel').onclick = () => el.remove();
+  el.querySelector('form').onsubmit = e => { e.preventDefault(); quickAddSave(ddId, kind); };
+}
+function quickAddSave(ddId, kind) {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  const key = v('qa-a');
+  const msg = document.getElementById('qa-msg');
+  if (!key) { msg.innerHTML = '<div style="color:#c0392b;font-size:12px;margin-top:8px">' + (kind === 'part' ? 'Part No.' : 'Unit #') + ' is required.</div>'; return; }
+  const list = (kind === 'part' ? getPartsDB() : getEquipmentDB()).slice();
+  const field = kind === 'part' ? 'partNo' : 'unit';
+  const existing = list.find(x => x && quickAddNorm(x[field]) === quickAddNorm(key));
+  if (existing) {
+    msg.innerHTML = '<div style="background:#fff8e6;border:1px solid #f0c36d;border-left:4px solid #b35400;border-radius:6px;padding:9px 11px;font-size:13px;color:#6b4a12;margin-top:10px">' +
+      '<b>' + escapeHtml(existing[field]) + '</b> is already in the list' + (existing.desc ? ' \u2014 ' + escapeHtml(existing.desc) : (existing.model ? ' \u2014 ' + escapeHtml((existing.make || '') + ' ' + existing.model) : '')) + '.</div>' +
+      '<button type="button" id="qa-use" style="width:100%;margin-top:8px;background:#1a3560;color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;cursor:pointer">Use it</button>';
+    document.getElementById('qa-use').onclick = () => { document.getElementById('quick-add')?.remove(); quickAddPick(ddId, kind, existing); };
+    return;
+  }
+  const by = (typeof currentUserName === 'function' && currentUserName()) || '';
+  const rec = kind === 'part'
+    ? { partNo: key.toUpperCase(), desc: v('qa-b'), unit: v('qa-c') }
+    : { unit: key.toUpperCase(), make: v('qa-b'), model: v('qa-c'), serial: v('qa-d'), category: v('qa-e') };
+  if (by) rec.addedBy = by;
+  rec.addedAt = new Date().toISOString();
+  list.push(rec);
+  try { localStorage.setItem(kind === 'part' ? DB_KEYS.parts : DB_KEYS.equipment, JSON.stringify(list)); }
+  catch (e) { msg.innerHTML = '<div style="color:#c0392b;font-size:12px;margin-top:8px">Could not save: ' + escapeHtml(e.message) + '</div>'; return; }
+  const type = kind === 'part' ? 'parts' : 'equipment';
+  try { dbTouch(type, dbItemKey(type, rec)); dbSyncSchedule(); } catch (e) {}
+  try { rebuildDropdownsAfterDBSave(type); } catch (e) {}
+  document.getElementById('quick-add')?.remove();
+  quickAddPick(ddId, kind, rec);
+  snack('\u2714 Added ' + (kind === 'part' ? 'part ' : 'unit ') + rec[field]);
+}
+function quickAddPick(ddId, kind, rec) {
+  const dd = dropdownRegistry[ddId];
+  if (!dd) return;
+  if (dd.search) dd.search.value = '';
+  dd.filtered = dd.items.slice();
+  selectItem(ddId, rec);
+  if (kind === 'part' && rec.unit) {
+    const rowId = parseInt(ddId.replace('part-', ''), 10);
+    try { if (partData[rowId]) applyPartUnitToRow(rowId, rec.unit); } catch (e) {}
+  }
+}
+
+// ── New technician from the sign-in screen ─────────────────────────────
+// Someone not yet in the list could not sign in at all. The badge number is
+// the identity: digits only, and the initials in front of it are made from the
+// name, the way the existing entries look ("Kirk Davis   KD-73236"). A badge
+// already in the list means that person exists, whatever the spelling.
+function techBadgeDigits(entry) {
+  const m = String(entry || '').match(/(\d{3,})\s*$/);
+  return m ? m[1] : '';
+}
+function techInitials(name) {
+  const w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '';
+  return (w[0][0] + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase();
+}
+function techTidyName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ')
+    .split(' ').map(x => x ? x[0].toUpperCase() + x.slice(1) : x).join(' ');
+}
+function techLev(a, b) {
+  a = a.toLowerCase(); b = b.toLowerCase();
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function techSimilar(name) {
+  const n = name.toLowerCase(), parts = n.split(' ');
+  return (getTechniciansDB() || []).map(String).find(e => {
+    const en = e.split(/\s{2,}/)[0].trim(), el = en.toLowerCase(), ep = el.split(' ');
+    if (techLev(el, n) <= 2) return true;
+    // Same surname and first name starting alike, or first/last swapped.
+    if (ep.length > 1 && parts.length > 1) {
+      if (ep[ep.length-1] === parts[parts.length-1] && ep[0][0] === parts[0][0]) return true;
+      if (ep[0] === parts[parts.length-1] && ep[ep.length-1] === parts[0]) return true;
+    }
+    return false;
+  });
+}
+function newTechOpen() {
+  document.getElementById('new-tech')?.remove();
+  const el = document.createElement('div');
+  el.id = 'new-tech';
+  el.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(13,27,46,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  const lab = t => '<div style="font-size:11px;font-weight:700;color:#1a3560;letter-spacing:.6px;text-transform:uppercase;margin:10px 0 4px">' + t + '</div>';
+  const inp = 'width:100%;padding:10px 12px;border:1.5px solid #c7cfdb;border-radius:7px;font-size:15px;box-sizing:border-box';
+  el.innerHTML = '<form style="background:#fff;border-radius:12px;max-width:380px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.35);text-align:left">' +
+    '<div style="font-size:17px;font-weight:800;color:#1a3560">\ud83d\udc77 New technician</div>' +
+    lab('First and last name') + '<input id="nt-name" autocomplete="off" style="' + inp + '" placeholder="e.g. Antony Mendoza">' +
+    lab('Badge # (numbers only)') + '<input id="nt-badge" inputmode="numeric" pattern="[0-9]*" autocomplete="off" style="' + inp + '" placeholder="e.g. 90512345">' +
+    '<div id="nt-preview" style="font-size:12px;color:#556;margin-top:8px;min-height:16px"></div>' +
+    '<div id="nt-msg"></div>' +
+    '<div id="nt-actions"><button type="submit" style="width:100%;margin-top:10px;background:#217a3c;color:#fff;border:none;border-radius:8px;padding:11px;font-size:15px;font-weight:700;cursor:pointer">Add and sign in</button></div>' +
+    '<button type="button" id="nt-cancel" style="width:100%;background:none;border:none;color:#888;padding:9px;font-size:13px;cursor:pointer">Cancel</button></form>';
+  document.body.appendChild(el);
+  const nm = el.querySelector('#nt-name'), bd = el.querySelector('#nt-badge');
+  const preview = () => {
+    bd.value = bd.value.replace(/\D/g, '');          // letters never get in
+    const name = techTidyName(nm.value);
+    el.querySelector('#nt-preview').innerHTML = (name && bd.value)
+      ? 'Will be saved as: <b>' + escapeHtml(name + '   ' + techInitials(name) + '-' + bd.value) + '</b>' : '';
+    el.querySelector('#nt-msg').innerHTML = '';
+    el.querySelector('#nt-actions').style.display = '';
+  };
+  nm.oninput = preview; bd.oninput = preview;
+  setTimeout(() => nm.focus(), 50);
+  el.querySelector('#nt-cancel').onclick = () => el.remove();
+  el.querySelector('form').onsubmit = e => { e.preventDefault(); newTechSubmit(false); };
+}
+function newTechMsg(kind, html, buttons) {
+  const box = document.getElementById('nt-msg');
+  const col = kind === 'err' ? ['#fdecea', '#e6a49c', '#c0392b', '#7a2318'] : ['#fff8e6', '#f0c36d', '#b35400', '#6b4a12'];
+  box.innerHTML = '<div style="background:' + col[0] + ';border:1px solid ' + col[1] + ';border-left:4px solid ' + col[2] +
+    ';border-radius:6px;padding:9px 11px;font-size:13px;color:' + col[3] + ';margin-top:10px">' + html + '</div>' +
+    '<div style="display:flex;gap:8px;margin-top:10px">' + buttons.map((b, i) =>
+      '<button type="button" data-i="' + i + '" style="flex:1;background:' + b.bg + ';color:#fff;border:none;border-radius:8px;padding:10px;font-weight:700;cursor:pointer">' + b.t + '</button>').join('') + '</div>';
+  box.querySelectorAll('button').forEach(x => x.onclick = () => buttons[+x.dataset.i].fn());
+  document.getElementById('nt-actions').style.display = 'none';
+}
+function newTechSignInAs(entry) {
+  const name = String(entry).split(/\s{2,}/)[0].trim();
+  document.getElementById('new-tech')?.remove();
+  fillLoginNames(name);
+  const sel = document.getElementById('login-name');
+  if (sel) { sel.value = name; try { renderLoginShift(true); } catch (e) {} }
+  loginAs('technician');
+}
+function newTechSubmit(force) {
+  const name = techTidyName(document.getElementById('nt-name').value);
+  const digits = document.getElementById('nt-badge').value.replace(/\D/g, '');
+  if (!name || name.split(' ').length < 2) { newTechMsg('err', 'Enter first and last name.', [{ t: 'OK', bg: '#888', fn: () => { document.getElementById('nt-msg').innerHTML = ''; document.getElementById('nt-actions').style.display = ''; } }]); return; }
+  if (digits.length < 4) { newTechMsg('err', 'Enter the badge number (digits only).', [{ t: 'OK', bg: '#888', fn: () => { document.getElementById('nt-msg').innerHTML = ''; document.getElementById('nt-actions').style.display = ''; } }]); return; }
+  const list = (getTechniciansDB() || []).map(String);
+  const sameBadge = list.find(e => techBadgeDigits(e) === digits);
+  if (sameBadge) {
+    const who = sameBadge.split(/\s{2,}/)[0].trim();
+    newTechMsg('err', '<b>Badge ' + escapeHtml(digits) + ' is already in the list</b> as <b>' + escapeHtml(who) + '</b>.<br>Is that you?', [
+      { t: 'Yes, sign in', bg: '#1a3560', fn: () => newTechSignInAs(sameBadge) },
+      { t: 'No', bg: '#888', fn: () => { document.getElementById('nt-msg').innerHTML = '<div style="font-size:12px;color:#7a2318;margin-top:8px">Check the badge number, or ask a supervisor.</div>'; document.getElementById('nt-actions').style.display = ''; } }]);
+    return;
+  }
+  const similar = force ? null : techSimilar(name);
+  if (similar) {
+    const sn = similar.split(/\s{2,}/)[0].trim(), sb = (similar.split(/\s{2,}/)[1] || '').trim();
+    newTechMsg('warn', '<b>Similar name:</b> ' + escapeHtml(sn) + (sb ? ' (' + escapeHtml(sb) + ')' : '') + '.<br>Is that you?', [
+      { t: 'That\u2019s me', bg: '#1a3560', fn: () => newTechSignInAs(similar) },
+      { t: 'No, add new', bg: '#217a3c', fn: () => newTechSubmit(true) }]);
+    return;
+  }
+  const entry = name + '   ' + techInitials(name) + '-' + digits;
+  list.push(entry);
+  try { localStorage.setItem(DB_KEYS.technicians, JSON.stringify(list)); } catch (e) { alert('Could not save: ' + e.message); return; }
+  try { dbTouch('technicians', dbItemKey('technicians', entry)); dbSyncSchedule(); } catch (e) {}
+  try { rebuildDropdownsAfterDBSave('technicians'); } catch (e) {}
+  newTechSignInAs(entry);
+}
+
+// Supervisor sign-in asks for a PIN. It lives in this page, so it keeps
+// technicians out of the supervisor view by accident, not a determined user.
+var SUP_PIN = '1234';
+function supAskPassword() {
+  document.getElementById('sup-pin')?.remove();
+  const el = document.createElement('div');
+  el.id = 'sup-pin';
+  el.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(13,27,46,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  el.innerHTML = '<form style="background:#fff;border-radius:12px;max-width:320px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
+    '<div style="font-size:17px;font-weight:800;color:#1a3560;margin-bottom:10px">\ud83d\udcca Supervisor password</div>' +
+    '<input id="sup-pin-in" type="password" inputmode="numeric" autocomplete="off" style="width:100%;padding:10px 12px;border:1.5px solid #c7cfdb;border-radius:7px;font-size:18px;letter-spacing:4px;text-align:center">' +
+    '<div id="sup-pin-err" style="color:#c0392b;font-size:12px;min-height:16px;margin-top:6px"></div>' +
+    '<button type="submit" style="width:100%;background:#c0392b;color:#fff;border:none;border-radius:8px;padding:11px;font-size:15px;font-weight:700;cursor:pointer">Sign in</button>' +
+    '<button type="button" id="sup-pin-cancel" style="width:100%;background:none;border:none;color:#888;padding:9px;font-size:13px;cursor:pointer">Cancel</button></form>';
+  document.body.appendChild(el);
+  const inp = el.querySelector('#sup-pin-in');
+  setTimeout(() => inp.focus(), 50);
+  el.querySelector('#sup-pin-cancel').onclick = () => el.remove();
+  el.querySelector('form').onsubmit = e => {
+    e.preventDefault();
+    if (inp.value === SUP_PIN) { el.remove(); window._supPassOk = true; loginAs('supervisor'); }
+    else { el.querySelector('#sup-pin-err').textContent = 'Wrong password'; inp.value = ''; inp.focus(); }
+  };
 }
 
 function showLoginError(msg) {
@@ -13696,6 +14128,17 @@ function renderList(id) {
 
   if (!items.length) {
     s.list.innerHTML = `<div class="sd-empty">No matches${s.allowCustom ? ' — press Enter to use custom value' : ''}</div>`;
+    // Part No. and Unit #: a short way to add what is missing instead of a
+    // trip to the Database view.
+    const qa = quickAddKind(id);
+    if (qa && q) {
+      const row = document.createElement('div');
+      row.className = 'sd-option sd-quick-add';
+      row.style.cssText = 'color:#217a3c;font-weight:700;background:#f2faf4';
+      row.textContent = qa === 'part' ? '\uff0b Add \u201c' + q + '\u201d to parts list' : '\uff0b Add unit \u201c' + q + '\u201d';
+      row.addEventListener('mousedown', e => { e.preventDefault(); closeDropdown(); quickAddOpen(id, q); });
+      s.list.appendChild(row);
+    }
     return;
   }
 
@@ -14133,43 +14576,199 @@ function saveCurrentAsPartSet() {
     desc: document.getElementById(`pdesc-${id}`)?.value || ''
   })).filter(p => p.partNo || p.desc);
   if (!parts.length) { snack('No parts to save'); return; }
-  const name = prompt('Name for this part set:', 'Part Set ' + (getPartSets().length + 1));
-  if (!name) return;
+  let name = prompt('Name for this part set:', 'Part Set ' + (getPartSets().length + 1));
+  if (!name || !name.trim()) return;
+  name = name.trim();
   const sets = getPartSets();
-  sets.push({name, parts});
+  const set = {name, parts};
+  if (ownMe()) set.owner = ownMe();
+  const dup = sets.findIndex(t => t.name === name && ownIsMine(t));
+  if (dup >= 0 && confirm(`You already have a part set "${name}".\n\nOK = replace it\nCancel = save as a new one`)) sets[dup] = set;
+  else { if (dup >= 0) set.name = name = ownFreeName(sets, name); sets.push(set); }
   savePartSets(sets);
+  try { dbTouch('partSets', dbItemKey('partSets', set)); dbSyncSchedule(); } catch (e) {}
   renderPartSetButtons();
-  snack(`✔ Saved part set: ${name}`);
+  ownToast('\u2714 Part set saved: ' + name, parts.length + ' part' + (parts.length > 1 ? 's' : ''));
 }
 
 function deletePartSet(idx) {
   const sets = getPartSets();
-  if (!confirm(`Delete part set "${sets[idx]?.name}"?`)) return;
+  const ps = sets[idx];
+  if (!ps) return;
+  if (!ownDeleteAllowed('partSets', ps, 'part set')) return;
+  if (!confirm(`Delete part set "${ps.name}"?`)) return;
   sets.splice(idx, 1);
   savePartSets(sets);
+  try { dbTouch('partSets', dbItemKey('partSets', ps), true); dbSyncSchedule(); } catch (e) {}
   renderPartSetButtons();
   snack('Part set deleted');
 }
 
 function saveCurrentAsTemplate() {
   const data = collectData();
-  const name = prompt('Template name:', data.c1 ? data.c1.slice(0,30) : 'Template ' + (getTemplates().length+1));
+  const me = currentUserName();
+  let name = prompt('Template name:', data.c1 ? data.c1.slice(0,30) : 'Template ' + (getTemplates().length+1));
+  if (!name) return;
+  name = name.trim();
   if (!name) return;
   const tpl = {name, c1: data.c1, c2: data.c2, c3: data.c3, parts: data.parts, complications: data.complications, type: data.type};
+  if (me && me !== 'Guest') tpl.owner = me;
   const templates = getTemplates();
-  templates.push(tpl);
+  // Same name among my own: replace it, or keep both under a new name.
+  const dup = templates.findIndex(t => t.name === name && ownIsMine(t));
+  let replaced = false;
+  if (dup >= 0) {
+    if (confirm(`You already have a template "${name}".\n\nOK = replace it\nCancel = save as a new one`)) {
+      templates[dup] = tpl; replaced = true;
+    } else {
+      tpl.name = name = ownFreeName(templates, name);
+      templates.push(tpl);
+    }
+  } else templates.push(tpl);
   saveTemplates(templates);
+  try { dbTouch('templates', dbItemKey('templates', tpl)); dbSyncSchedule(); } catch (e) {}
   renderTemplateButtons();
-  snack(`✔ Template saved: ${name}`);
+  const n = (tpl.parts || []).filter(p => p.partNo || p.desc).length;
+  ownToast('\u2714 Template ' + (replaced ? 'replaced' : 'saved') + ': ' + name,
+           'In My templates' + (n ? ' \u00b7 with ' + n + ' part' + (n > 1 ? 's' : '') : ''));
 }
 
 function deleteTemplate(idx) {
   const templates = getTemplates();
-  if (!confirm(`Delete template "${templates[idx]?.name}"?`)) return;
+  const t = templates[idx];
+  if (!t) return;
+  if (!ownDeleteAllowed('templates', t, 'template')) return;
+  if (!confirm(`Delete template "${t.name}"?`)) return;
   templates.splice(idx, 1);
   saveTemplates(templates);
+  try { dbTouch('templates', dbItemKey('templates', t), true); dbSyncSchedule(); } catch (e) {}
   renderTemplateButtons();
   snack('Template deleted');
+}
+
+// ── Mine / others / old for templates and part sets ─────────────────────
+// Each saved template and part set carries its author. The lists show your own
+// first; other technicians' are behind a checkbox (one setting for both); the
+// ones saved before authors were recorded sit under "Old" until each technician
+// takes a copy or skips them, and a supervisor can clear them.
+var OWN_SHOW_OTHERS_KEY = 'aircon_show_others_v1';
+var OWN_OLD_HIDDEN_KEY  = 'aircon_old_hidden_v1';
+
+function ownMe() { const m = currentUserName(); return (m && m !== 'Guest') ? m : ''; }
+function ownIsMine(item) { const me = ownMe(); return !!(item && item.owner && me && sameTech(item.owner, me)); }
+function ownShowOthers() { try { return localStorage.getItem(OWN_SHOW_OTHERS_KEY) === '1'; } catch (e) { return false; } }
+function ownSetShowOthers(v) {
+  try { localStorage.setItem(OWN_SHOW_OTHERS_KEY, v ? '1' : '0'); } catch (e) {}
+  try { renderTemplateSelect(); } catch (e) {}
+  try { renderPartSetButtons(); } catch (e) {}
+}
+function ownHiddenOld(type) {
+  try {
+    const all = JSON.parse(localStorage.getItem(OWN_OLD_HIDDEN_KEY) || '{}');
+    return ((all[ownMe()] || {})[type]) || [];
+  } catch (e) { return []; }
+}
+function ownHideOld(type, name) {
+  try {
+    const all = JSON.parse(localStorage.getItem(OWN_OLD_HIDDEN_KEY) || '{}');
+    const u = all[ownMe()] = all[ownMe()] || {};
+    u[type] = u[type] || [];
+    if (u[type].indexOf(name) < 0) u[type].push(name);
+    localStorage.setItem(OWN_OLD_HIDDEN_KEY, JSON.stringify(all));
+  } catch (e) {}
+}
+function ownFreeName(list, name) {
+  let n = 2, cand = name + ' (2)';
+  while (list.some(t => t.name === cand && ownIsMine(t))) cand = name + ' (' + (++n) + ')';
+  return cand;
+}
+// Indexes into the stored array, grouped. Nobody signed in: one flat list.
+function ownGroups(type, arr) {
+  const me = ownMe(), hidden = ownHiddenOld(type), showOthers = ownShowOthers();
+  const g = { mine: [], old: [], oldAll: [], others: {}, othersCount: 0, showOthers, flat: !me };
+  (arr || []).forEach((t, i) => {
+    if (!t) return;
+    if (!me) { g.mine.push(i); return; }
+    if (!t.owner) { g.oldAll.push(i); if (hidden.indexOf(t.name) < 0) g.old.push(i); return; }
+    if (sameTech(t.owner, me)) { g.mine.push(i); return; }
+    const a = String(t.owner).trim();
+    (g.others[a] = g.others[a] || []).push(i);
+    g.othersCount++;
+  });
+  return g;
+}
+function ownRenderOthersToggle(prefix, g) {
+  const cb = document.getElementById(prefix === 'tpl' ? 'tpl-show-others' : 'ps-show-others');
+  const cnt = document.getElementById(prefix === 'tpl' ? 'tpl-others-count' : 'ps-others-count');
+  if (cb) { cb.checked = g.showOthers; cb.parentElement.style.display = g.flat ? 'none' : 'flex'; }
+  if (cnt) cnt.textContent = g.othersCount ? '(' + g.othersCount + ')' : '(0)';
+}
+function ownDeleteAllowed(type, item, what) {
+  const me = ownMe();
+  if (!me || isSupervisor() || ownIsMine(item)) return true;
+  if (!item.owner) {
+    // An old one: a technician removes it from his own list only.
+    if (confirm(`"${item.name}" is an old ${what} without an author. Hide it from your list?\n(Only a supervisor can delete it for everyone.)`)) {
+      ownHideOld(type, item.name);
+      if (type === 'templates') renderTemplateSelect(); else renderPartSetButtons();
+    }
+    return false;
+  }
+  alert(`\u26d4 "${item.name}" belongs to ${item.owner}. Only the author or a supervisor can delete it.`);
+  return false;
+}
+function ownRemoveAllOld(type) {
+  if (!isSupervisor()) return;
+  const list = type === 'templates' ? getTemplates() : getPartSets();
+  const old = list.filter(t => t && !t.owner);
+  if (!old.length) return;
+  if (!confirm(`Delete ${old.length} old ${type === 'templates' ? 'template' : 'part set'}(s) without an author for everyone?`)) return;
+  const keep = list.filter(t => t && t.owner);
+  if (type === 'templates') saveTemplates(keep); else savePartSets(keep);
+  try { old.forEach(t => dbTouch(type, dbItemKey(type, t), true)); dbSyncSchedule(); } catch (e) {}
+  if (type === 'templates') renderTemplateSelect(); else renderPartSetButtons();
+  snack('Old ' + (type === 'templates' ? 'templates' : 'part sets') + ' removed: ' + old.length);
+}
+// After an old template is applied: offer a copy of one's own.
+function ownAskOldTemplate(tpl) {
+  if (!tpl || tpl.owner || !ownMe()) return;
+  if (ownHiddenOld('templates').indexOf(tpl.name) >= 0) return;
+  document.getElementById('own-old-ask')?.remove();
+  const el = document.createElement('div');
+  el.id = 'own-old-ask';
+  el.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(13,27,46,.35);display:flex;align-items:center;justify-content:center;padding:16px';
+  el.innerHTML = '<div style="background:#fff;border-radius:10px;max-width:400px;width:100%;padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.3);font-size:14px;color:#1a2b45">' +
+    '<div style="font-weight:800;margin-bottom:6px">Save \u201c' + escapeHtml(tpl.name) + '\u201d to My templates?</div>' +
+    '<div style="font-size:12px;color:#666;margin-bottom:12px">Old template without an author. A copy will be yours; others keep theirs.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+    '<button type="button" id="own-old-yes" style="flex:1;background:#217a3c;color:#fff;border:none;border-radius:6px;padding:10px;font-weight:700;cursor:pointer">Yes, save as mine</button>' +
+    '<button type="button" id="own-old-no" style="flex:1;background:#888;color:#fff;border:none;border-radius:6px;padding:10px;font-weight:700;cursor:pointer">No, don\u2019t ask again</button>' +
+    '</div></div>';
+  document.body.appendChild(el);
+  el.querySelector('#own-old-yes').onclick = () => {
+    const list = getTemplates();
+    const copy = JSON.parse(JSON.stringify(tpl));
+    copy.owner = ownMe();
+    if (list.some(t => t.name === copy.name && ownIsMine(t))) copy.name = ownFreeName(list, copy.name);
+    list.push(copy);
+    saveTemplates(list);
+    try { dbTouch('templates', dbItemKey('templates', copy)); dbSyncSchedule(); } catch (e) {}
+    ownHideOld('templates', tpl.name);
+    el.remove();
+    renderTemplateSelect();
+    ownToast('\u2714 Saved to My templates: ' + copy.name, '');
+  };
+  el.querySelector('#own-old-no').onclick = () => { ownHideOld('templates', tpl.name); el.remove(); renderTemplateSelect(); };
+}
+function ownToast(title, sub) {
+  document.getElementById('own-toast')?.remove();
+  const el = document.createElement('div');
+  el.id = 'own-toast';
+  el.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:7000;background:#217a3c;color:#fff;' +
+    'border-radius:8px;padding:12px 18px;font-weight:700;font-size:15px;box-shadow:0 6px 18px rgba(0,0,0,.3);max-width:92vw';
+  el.innerHTML = escapeHtml(title) + (sub ? '<div style="font-weight:400;font-size:12px;opacity:.9;margin-top:2px">' + escapeHtml(sub) + '</div>' : '');
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
 }
 
 function renderTemplateSelect() {
@@ -14177,9 +14776,23 @@ function renderTemplateSelect() {
   if (!sel) return;
   const templates = getTemplates();
   const current = sel.value;
-  sel.innerHTML = '<option value="">— Select template to apply —</option>' +
-    templates.map((t, i) => `<option value="${i}">${escapeHtml(t.name)}</option>`).join('');
-  if (current) sel.value = current;
+  const g = ownGroups('templates', templates);
+  const opt = (i, suffix) => `<option value="${i}">${escapeHtml(templates[i].name)}${suffix || ''}</option>`;
+  let html = '<option value="">— Select template to apply —</option>';
+  if (g.flat) html += g.mine.map(i => opt(i)).join('');
+  else {
+    if (g.mine.length) html += '<optgroup label="My templates">' + g.mine.map(i => opt(i)).join('') + '</optgroup>';
+    if (g.old.length) html += '<optgroup label="Old (no author)">' + g.old.map(i => opt(i)).join('') + '</optgroup>';
+    if (g.showOthers) Object.keys(g.others).sort().forEach(a =>
+      html += '<optgroup label="' + escapeHtml(a) + '">' + g.others[a].map(i => opt(i, ' \u00b7 ' + a.split(' ')[0])).join('') + '</optgroup>');
+  }
+  sel.innerHTML = html;
+  if (current && sel.querySelector('option[value="' + current + '"]')) sel.value = current;
+  ownRenderOthersToggle('tpl', g);
+  const tools = document.getElementById('tpl-old-tools');
+  if (tools) tools.innerHTML = (isSupervisor() && g.oldAll.length)
+    ? '<button type="button" class="btn-add" onclick="ownRemoveAllOld(\'templates\')" style="margin-top:0;padding:4px 10px;font-size:11px;background:#8a5a00">\ud83e\uddf9 Remove all old (' + g.oldAll.length + ')</button>'
+    : '';
 }
 
 function applySelectedTemplate() {
@@ -15106,7 +15719,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.28';
+  const APP_VER = '4.31';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
@@ -15144,7 +15757,7 @@ document.addEventListener('DOMContentLoaded', function() {
   try { archiveOldLocalReports(); } catch (e) {}
   try { restoreFormSections(); } catch (e) {}
   try { updateActionButtons(); } catch (e) {}
-  try { if (localStorage.getItem('aircon_hints_on') === '1') toggleHints(); } catch (e) {}
+  try { localStorage.removeItem('aircon_hints_on'); } catch (e) {}
   try { migrateInhausIntoReports(); } catch (e) {}
 
   // ── Build core dropdowns (unit, shift, contact) ──────────────────────
@@ -15273,6 +15886,9 @@ document.addEventListener('DOMContentLoaded', function() {
           border-radius:7px;font-size:14px;margin-top:4px">
           <option value="">— Select your name —</option>
         </select>
+        <div style="text-align:right;margin-top:6px">
+          <a href="#" onclick="event.preventDefault(); newTechOpen()" style="font-size:12px;color:#217a3c;font-weight:700">＋ I'm new — add my name</a>
+        </div>
       </div>
       <!-- Asked once here instead of on every report: the technician knows
            which crew they are working, the clock cannot tell at 18:30. -->
