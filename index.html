@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.32</title>
+<title>AirconTech Field Reports v4.33</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.32</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.33</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -7538,17 +7538,19 @@ function applyTemplate(idx) {
     // field height have to be brought up to date by hand.
     try { c3Guard(fC3); autoGrow(fC3); } catch (e) {}
   }
-  // Apply parts — first remove empty rows, then add template parts
+  // Apply parts. Switching to another template takes the previous template's
+  // parts out first (they used to pile up); parts typed in by hand stay.
+  const _tplPrev = (window._tplPartRowIds || []).filter(id => partRows.includes(id));
+  [...partRows].forEach(id => {
+    const empty = !partData[id]?.partNo && !document.getElementById(`pdesc-${id}`)?.value?.trim();
+    if (empty || _tplPrev.includes(id)) removePartRow(id);
+  });
+  window._tplPartRowIds = [];
   if (tpl.parts && tpl.parts.length) {
-    // Remove rows that have no part number and no description
-    [...partRows].forEach(id => {
-      if (!partData[id]?.partNo && !document.getElementById(`pdesc-${id}`)?.value?.trim()) {
-        removePartRow(id);
-      }
-    });
     tpl.parts.forEach(p => {
       addPartRow();
       const id = partIdCounter;
+      window._tplPartRowIds.push(id);
       const qEl = document.getElementById(`qty-${id}`);
       const dEl = document.getElementById(`pdesc-${id}`);
       if (qEl) qEl.value = p.qty;
@@ -7559,19 +7561,22 @@ function applyTemplate(idx) {
       if (dd && p.partNo) { dd.selected={_custom:true,value:p.partNo}; dd.input.value=p.partNo; dd.wrap.classList.add('has-value'); }
     });
   }
-  // Apply complications
-  if (tpl.complications && tpl.complications.length) {
-    tpl.complications.forEach(c => {
-      selectedComplications.add(c);
-      document.querySelectorAll('#complications-grid .comp-item').forEach(el => {
-        if (el.dataset.name === c) {
-          el.classList.add('selected');
-          const icon = el.querySelector('span');
-          if (icon) icon.textContent = '☑ ';
-        }
-      });
-    });
-  }
+  if (!partRows.length) { try { addPartRow(); } catch (e) {} }
+  // Apply complications (C4) the same way: the previous template's ticks go,
+  // the new template's come in, ticks set by hand stay.
+  const _compEl = c => [...document.querySelectorAll('#complications-grid .comp-item')].find(el => el.dataset.name === c);
+  const _compSet = (c, on) => {
+    if (on) selectedComplications.add(c); else selectedComplications.delete(c);
+    const el = _compEl(c);
+    if (el) { el.classList.toggle('selected', on); const icon = el.querySelector('span'); if (icon) icon.textContent = on ? '\u2611 ' : '\u2610 '; }
+  };
+  (window._tplCompNames || []).forEach(c => { if (!(tpl.complications || []).includes(c)) _compSet(c, false); });
+  const _keep = (window._tplCompNames || []).filter(c => (tpl.complications || []).includes(c));
+  window._tplCompNames = _keep;
+  (tpl.complications || []).forEach(c => {
+    if (!selectedComplications.has(c)) { _compSet(c, true); window._tplCompNames.push(c); }
+  });
+  try { updateRequiredComplications(); } catch (e) {}
   if (tpl.type) setType(tpl.type);
   snack(`✔ Template applied: ${tpl.name}`);
   try { ownShowApplied(tpl); } catch (e) {}
@@ -12350,12 +12355,18 @@ function renderDBTable(type) {
     items = getTechniciansDB(); storageKey = DB_KEYS.technicians; addLabel = '＋ Add Technician';
     defaultItem = '';
     renderRow = (item, i) => {
-      const val = typeof item === 'string' ? item : JSON.stringify(item);
+      // Name and badge in separate boxes: one free-text box let a single space
+      // slip in between them, and the badge then became part of the name.
+      const p = techSplit(typeof item === 'string' ? item : '');
       return `<tr id="db-row-${i}">
-        <td style="padding:5px 8px" colspan="2"><input type="text" value="${escapeHtml(val)}"
-          oninput="dbUpdateField('${type}',${i},'value',this.value)"
-          style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px"
-          placeholder="Full Name   ID-12345678"></td>
+        <td style="padding:5px 8px"><input type="text" id="dbt-name-${i}" value="${escapeHtml(p.name)}"
+          oninput="dbTechUpdate(${i})" placeholder="First and last name"
+          style="width:100%;padding:5px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px"></td>
+        <td style="padding:5px 8px;white-space:nowrap"><input type="text" id="dbt-badge-${i}" value="${escapeHtml(p.digits)}"
+          inputmode="numeric" pattern="[0-9]*" oninput="dbTechUpdate(${i})" placeholder="Badge #"
+          style="width:96px;padding:5px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;font-family:monospace">
+          <span id="dbt-prev-${i}" style="font-size:11px;color:#888;margin-left:4px">${escapeHtml(p.badge)}</span>
+          <div id="dbt-warn-${i}" style="font-size:11px;margin-top:2px"></div></td>
         <td style="padding:5px 8px;white-space:nowrap">
           <button onclick="dbCopyItem('${type}',${i})" class="db-action-btn" title="Duplicate row">⧉ Dup</button>
           <button onclick="dbRemoveItem('${type}',${i})" class="db-action-btn db-danger" title="Delete">🗑</button>
@@ -12415,6 +12426,8 @@ function renderDBTable(type) {
     ? '<th style="'+TH+'">Part No.</th><th style="'+TH+'">Description</th><th style="'+TH+'">MFG #</th><th style="'+TH+'">Unit</th><th style="'+TH+'">System</th><th style="width:70px;background:#1a3560"></th>'
     : type === 'equipment'
     ? '<th style="'+TH+'">Unit#</th><th style="'+TH+'">Make</th><th style="'+TH+'">Model</th><th style="'+TH+'">Serial</th><th style="'+TH+'">Category</th><th style="width:70px;background:#1a3560"></th>'
+    : type === 'technicians'
+    ? '<th style="'+TH+';width:60%">Name</th><th style="'+TH+'">Badge #</th><th style="width:70px;background:#1a3560"></th>'
     : '<th style="'+TH+';width:100%">Value</th><th style="width:70px;background:#1a3560"></th>';
 
   container.innerHTML = `
@@ -12447,6 +12460,7 @@ function renderDBTable(type) {
     </div>`;
 
   window._dbEditItems = JSON.parse(JSON.stringify(items));
+  if (type === 'technicians') setTimeout(dbTechCheck, 0);
   window._dbEditType  = type;
   window._dbEditKey   = storageKey;
   window._dbDefaultItem = defaultItem;
@@ -12672,6 +12686,12 @@ async function dbSyncAuto(reason) {
 
 function dbSave(type) {
   if (!window._dbEditItems || !window._dbEditKey) return;
+  if (type === 'technicians' && window._dbTechSaveAsk !== false) {
+    const iss = techIssues(window._dbEditItems.map(String));
+    const dup = iss.filter(x => x.kind === 'dup');
+    if (dup.length && !confirm('Badge used by more than one person:\n\n' +
+        dup.map(x => '\u2022 ' + x.text).filter((v, k, a) => a.indexOf(v) === k).join('\n') + '\n\nSave anyway?')) return;
+  }
   localStorage.setItem(window._dbEditKey, JSON.stringify(window._dbEditItems));
   // Mark everything currently in the list as seen now, so an edit made here
   // wins over an older copy on another device.
@@ -12733,7 +12753,7 @@ function dbRemoveItem(type, idx) {
 
 function dbCopyItem(type, idx) {
   if (!window._dbEditItems) return;
-  const copy = JSON.parse(JSON.stringify(window._dbEditItems[idx]));
+  let copy = JSON.parse(JSON.stringify(window._dbEditItems[idx]));
   // Modify unit# to indicate it's a copy
   if (copy && typeof copy === 'object' && copy.unit) copy.unit = copy.unit + '-COPY';
   else if (typeof copy === 'string') copy = copy + ' (copy)';
@@ -12764,7 +12784,7 @@ function initSuperFilterTechs() {
     while (techSel.options.length > 1) techSel.remove(1);
     const names = new Set();
     allR.forEach(r => (r.techs||[]).forEach(t => {
-      const n = (t.name||'').split(/  +/)[0];
+      const n = supTechName(t.name);
       if (n) names.add(n);
     }));
     if (typeof getTechniciansDB === 'function') {
@@ -12843,7 +12863,7 @@ function superRender() {
     if (from && r.date < from) return false;
     if (to   && r.date > to)   return false;
     if (tech) {
-      const names = (r.techs||[]).map(t => (t.name||'').split(/\s{2,}/)[0]);
+      const names = (r.techs||[]).map(t => supTechName(t.name));
       if (!names.some(n => n && n.toLowerCase().includes(tech.toLowerCase()))) return false;
     }
     if (type && r.type !== type && r.jobType !== type) return false;
@@ -12904,7 +12924,7 @@ function renderSuperTimeSummary(reports) {
   const byTech = {};
   reports.forEach(r => {
     (r.techs||[]).forEach(t => {
-      const name = (t.name||'').split(/\s{2,}/)[0] || 'Unknown';
+      const name = supTechName(t.name) || 'Unknown';
       if (!byTech[name]) byTech[name] = { reps: new Set(), reg:0, ot:0, night:0 };
       byTech[name].reps.add(r.reportNum);
       // Hours: 12h per shift by default
@@ -13295,6 +13315,7 @@ function setSidebarLogo() {
 function fillLoginNames(keep) {
   const sel = document.getElementById('login-name');
   if (!sel) return;
+  try { techRepairEntries(); } catch (e) {}
   const current = keep || sel.value || '';
   const names = [];
   (getTechniciansDB() || []).forEach(t => {
@@ -13370,7 +13391,7 @@ function loginAs(role) {
     try { if(typeof initGroqKeySidebar==='function') initGroqKeySidebar(); } catch(e){}
     snack('Welcome, ' + name + '!');
     try { renderTemplateSelect(); renderPartSetButtons(); } catch (e) {}
-  try { setTimeout(showWhatsNew, 600); } catch (e) {}
+  try { setTimeout(() => { if (!techConfirmIfNeeded(showWhatsNew)) showWhatsNew(); }, 600); } catch (e) {}
   } catch(err) { console.error('loginAs:',err); alert('Login error: '+err.message); }
 }
 
@@ -13379,6 +13400,10 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.33', items: [
+    'Switching templates replaces the previous template\u2019s parts and C4 ticks instead of adding to them. What you added yourself stays.',
+    'Database \u2192 Technicians: name and badge number in separate boxes; badge problems are highlighted.',
+    'Supervisor: one person is counted once, even if the name was typed differently on some reports.' ] },
   { v: '4.32', items: [
     'Templates: only yours are listed; tick \u201cShow others\u2019 & old\u201d to see the rest.',
     'Used someone else\u2019s or an old template? \u2b50 Keep as mine under the list \u2014 no more pop-up.' ] },
@@ -13552,6 +13577,180 @@ function quickAddPick(ddId, kind, rec) {
     const rowId = parseInt(ddId.replace('part-', ''), 10);
     try { if (partData[rowId]) applyPartUnitToRow(rowId, rec.unit); } catch (e) {}
   }
+}
+
+// ── Technician list hygiene ─────────────────────────────────────────────
+// "Kirk Davis   KD-73236": name, then initials and badge. Also reads the
+// broken single-space form and a bare number.
+function techSplit(entry) {
+  const e = String(entry || '').trim();
+  const m = e.match(/^(.*?\S)\s+(?:([A-Za-z]{1,4})-?)?(\d{3,})$/);
+  if (!m) return { name: e, digits: '', badge: '' };
+  const name = m[1].trim();
+  return { name, digits: m[3], badge: (m[2] ? m[2].toUpperCase() : techInitials(name)) + '-' + m[3] };
+}
+function techCompose(name, digits) {
+  name = techTidyName(name);
+  digits = String(digits || '').replace(/\D/g, '');
+  return digits ? name + '   ' + techInitials(name) + '-' + digits : name;
+}
+function techIssues(list) {
+  const out = [], byBadge = {};
+  list.forEach((e, i) => {
+    const p = techSplit(e);
+    if (!p.name) return;
+    if (!p.digits) out.push({ i, kind: 'warn', text: p.name + ': no badge number' });
+    else (byBadge[p.digits] = byBadge[p.digits] || []).push(i);
+    if (p.name.split(' ').length < 2) out.push({ i, kind: 'warn', text: p.name + ': no last name' });
+  });
+  Object.keys(byBadge).forEach(d => {
+    const ix = byBadge[d];
+    if (ix.length > 1) {
+      const who = ix.map(i => techSplit(list[i]).name).join(' & ');
+      ix.forEach(i => out.push({ i, kind: 'dup', text: 'Badge ' + d + ': ' + who }));
+    }
+  });
+  for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) {
+    const x = techSplit(list[a]).name.toLowerCase(), y = techSplit(list[b]).name.toLowerCase();
+    if (x && y && x !== y && techLev(x, y) <= 2) {
+      out.push({ i: a, kind: 'similar', text: 'Similar names: ' + techSplit(list[a]).name + ' / ' + techSplit(list[b]).name });
+      out.push({ i: b, kind: 'similar', text: 'Similar names: ' + techSplit(list[a]).name + ' / ' + techSplit(list[b]).name });
+    }
+  }
+  return out;
+}
+function dbTechUpdate(i) {
+  const n = document.getElementById('dbt-name-' + i), b = document.getElementById('dbt-badge-' + i);
+  if (!n || !b) return;
+  b.value = b.value.replace(/\D/g, '');               // letters never get in
+  const entry = techCompose(n.value, b.value);
+  const prev = document.getElementById('dbt-prev-' + i);
+  if (prev) prev.textContent = techSplit(entry).badge;
+  dbUpdateField('technicians', i, 'value', entry);
+  dbTechCheck();
+}
+function dbTechCheck() {
+  if (window._dbEditType && window._dbEditType !== 'technicians') return;
+  const items = (window._dbEditItems || []).map(String);
+  const iss = techIssues(items);
+  const col = { dup: '#c0392b', warn: '#b35400', similar: '#d35400' };
+  const bg = { dup: '#fdecea', warn: '#fff8e6', similar: '#fff1e6' };
+  items.forEach((e, i) => {
+    const row = document.getElementById('db-row-' + i), w = document.getElementById('dbt-warn-' + i);
+    const mine = iss.filter(x => x.i === i);
+    const worst = mine.find(x => x.kind === 'dup') || mine.find(x => x.kind === 'warn') || mine[0];
+    if (row) row.style.background = worst ? bg[worst.kind] : '';
+    if (w) { w.textContent = worst ? worst.text : ''; w.style.color = worst ? col[worst.kind] : ''; }
+  });
+  const tb = document.getElementById('db-tbody');
+  if (!tb) return;
+  const host = tb.closest('div');
+  let bar = document.getElementById('db-tech-issues');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'db-tech-issues'; host.parentElement.insertBefore(bar, host); }
+  const uniq = iss.map(x => x.text).filter((v, k, a) => a.indexOf(v) === k);
+  bar.innerHTML = uniq.length
+    ? '<div style="background:#fff8e6;border-bottom:1px solid #f0c36d;padding:7px 10px;font-size:12px;color:#6b4a12">\u26a0 <b>' +
+      uniq.length + ' issue' + (uniq.length > 1 ? 's' : '') + '</b>: ' + uniq.map(escapeHtml).join(' \u00b7 ') + '</div>'
+    : '';
+}
+// One-time repair of entries saved with a single space between the name and
+// the badge: the badge was read as part of the name everywhere.
+function techRepairEntries() {
+  let list;
+  try { list = JSON.parse(localStorage.getItem(DB_KEYS.technicians) || 'null'); } catch (e) { return; }
+  if (!Array.isArray(list)) return;
+  let changed = false;
+  list = list.map(e => {
+    if (typeof e !== 'string' || /\s{2,}/.test(e)) return e;
+    const m = e.trim().match(/^(.*?\S) ([A-Za-z]{1,4}-\d{3,})$/);
+    if (!m) return e;
+    const fixed = m[1] + '   ' + m[2].toUpperCase();
+    try { dbTouch('technicians', e, true); dbTouch('technicians', fixed, false); } catch (x) {}
+    changed = true;
+    return fixed;
+  });
+  if (changed) {
+    localStorage.setItem(DB_KEYS.technicians, JSON.stringify(list));
+    try { dbSyncSchedule(); } catch (e) {}
+  }
+}
+// Supervisor views: one person under one name, whatever was typed on the
+// report - matched by badge number first, then by name ignoring case.
+function supTechName(raw) {
+  const p = techSplit(raw);
+  if (!p.name) return '';
+  const db = (getTechniciansDB() || []).map(e => techSplit(String(e)));
+  if (p.digits) { const hit = db.find(x => x.digits === p.digits && x.name.toLowerCase() === p.name.toLowerCase()) ||
+                              (db.filter(x => x.digits === p.digits).length === 1 ? db.find(x => x.digits === p.digits) : null);
+                  if (hit) return hit.name; }
+  const byName = db.find(x => x.name.toLowerCase() === p.name.toLowerCase());
+  if (byName) return byName.name;
+  return techTidyName(p.name.toLowerCase());
+}
+
+// Once, at sign-in: a technician whose badge is also listed for someone else,
+// or who has no badge in the list, is asked to confirm name and number.
+var TECH_OK_KEY = 'aircon_badge_ok_v1';
+function techConfirmIfNeeded(after) {
+  if (!currentUser || isSupervisor()) return false;
+  const me = currentUserName();
+  const list = (getTechniciansDB() || []).map(String);
+  const idx = list.findIndex(e => techSplit(e).name === me);
+  if (idx < 0) return false;
+  const p = techSplit(list[idx]);
+  const twins = p.digits ? list.filter((e, i) => i !== idx && techSplit(e).digits === p.digits).map(e => techSplit(e).name) : [];
+  if (p.digits && !twins.length) return false;
+  let ok = [];
+  try { ok = JSON.parse(localStorage.getItem(TECH_OK_KEY) || '[]'); } catch (e) {}
+  if (ok.indexOf(list[idx]) >= 0) return false;
+  document.getElementById('tech-confirm')?.remove();
+  const el = document.createElement('div');
+  el.id = 'tech-confirm';
+  el.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(13,27,46,.45);display:flex;align-items:center;justify-content:center;padding:16px';
+  const lab = t => '<div style="font-size:11px;font-weight:700;color:#1a3560;letter-spacing:.6px;text-transform:uppercase;margin:10px 0 4px">' + t + '</div>';
+  const inp = 'width:100%;padding:10px 12px;border:1.5px solid #c7cfdb;border-radius:7px;font-size:15px;box-sizing:border-box';
+  el.innerHTML = '<form style="background:#fff;border-radius:12px;max-width:380px;width:100%;padding:18px 20px;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
+    '<div style="font-size:17px;font-weight:800;color:#1a3560">\ud83d\udc77 Please confirm your name and badge</div>' +
+    '<div style="background:#fff8e6;border:1px solid #f0c36d;border-left:4px solid #b35400;border-radius:6px;padding:8px 10px;font-size:12.5px;color:#6b4a12;margin-top:10px">' +
+      (twins.length ? 'Badge <b>' + escapeHtml(p.digits) + '</b> is also listed for <b>' + escapeHtml(twins.join(', ')) + '</b>. One of them is probably wrong.'
+                    : 'Your badge number is missing from the list.') + '</div>' +
+    lab('First and last name') + '<input id="tc-n" style="' + inp + '" value="' + escapeHtml(p.name) + '">' +
+    lab('Badge # (numbers only)') + '<input id="tc-b" inputmode="numeric" pattern="[0-9]*" style="' + inp + '" value="' + escapeHtml(p.digits) + '">' +
+    '<div id="tc-msg" style="font-size:12px;color:#c0392b;min-height:16px;margin-top:6px"></div>' +
+    '<button type="submit" style="width:100%;background:#217a3c;color:#fff;border:none;border-radius:8px;padding:11px;font-size:15px;font-weight:700;cursor:pointer">Confirm</button>' +
+    '<button type="button" id="tc-later" style="width:100%;background:none;border:none;color:#888;padding:9px;font-size:13px;cursor:pointer">Later</button></form>';
+  document.body.appendChild(el);
+  const bEl = el.querySelector('#tc-b');
+  bEl.oninput = () => { bEl.value = bEl.value.replace(/\D/g, ''); };
+  const done = () => { el.remove(); if (typeof after === 'function') try { after(); } catch (e) {} };
+  el.querySelector('#tc-later').onclick = done;
+  el.querySelector('form').onsubmit = ev => {
+    ev.preventDefault();
+    const name = techTidyName(el.querySelector('#tc-n').value), digits = bEl.value;
+    const msg = el.querySelector('#tc-msg');
+    if (name.split(' ').length < 2) { msg.textContent = 'Enter first and last name.'; return; }
+    if (digits.length < 4) { msg.textContent = 'Enter the badge number.'; return; }
+    const cur = (getTechniciansDB() || []).map(String);
+    const k = cur.findIndex(e => techSplit(e).name === me);
+    const other = cur.find((e, i) => i !== k && techSplit(e).digits === digits && !twins.includes(techSplit(e).name));
+    if (other) { msg.textContent = 'Badge ' + digits + ' belongs to ' + techSplit(other).name + '. Check the number.'; return; }
+    const entry = techCompose(name, digits);
+    if (k >= 0 && cur[k] !== entry) {
+      const old = cur[k];
+      cur[k] = entry;
+      try { localStorage.setItem(DB_KEYS.technicians, JSON.stringify(cur)); } catch (e) { msg.textContent = 'Could not save: ' + e.message; return; }
+      try { dbTouch('technicians', old, true); dbTouch('technicians', entry, false); dbSyncSchedule(); } catch (e) {}
+      try { rebuildDropdownsAfterDBSave('technicians'); } catch (e) {}
+      if (name !== me) {
+        currentUser.name = name;
+        try { sessionStorage.setItem('aircon_user', JSON.stringify(currentUser)); } catch (e) {}
+      }
+    }
+    try { const okl = JSON.parse(localStorage.getItem(TECH_OK_KEY) || '[]'); okl.push(entry); localStorage.setItem(TECH_OK_KEY, JSON.stringify(okl)); } catch (e) {}
+    snack('\u2714 Thank you \u2014 saved as ' + entry.replace(/\s+/g, ' '));
+    done();
+  };
+  return true;
 }
 
 // ── New technician from the sign-in screen ─────────────────────────────
@@ -14848,9 +15047,21 @@ function dbUpdateField(type, idx, field, val) {
     window._dbEditItems[idx][field] = val;
   }
   const after = dbItemKey(type, window._dbEditItems[idx]);
-  // Renaming the key is a delete plus an add as far as merging is concerned.
-  if (before && before !== after) dbTouch(type, before, true);
-  dbTouch(type, after, false);
+  // Renaming the key is a delete plus an add as far as merging is concerned -
+  // but only the value the row started with was ever stored anywhere. Every
+  // keystroke used to leave a deletion mark for the half-typed text ("A",
+  // "Au", "Aus"...), and the shared list carried hundreds of them.
+  if (window._dbEditOrigFor !== window._dbEditItems) {
+    window._dbEditOrigFor = window._dbEditItems; window._dbEditOrig = {}; window._dbEditLast = {};
+  }
+  if (!(idx in window._dbEditOrig)) window._dbEditOrig[idx] = before;
+  const orig = window._dbEditOrig[idx], last = window._dbEditLast[idx];
+  if (last && last !== orig && last !== after) {
+    try { const m = getDbMeta(type); delete m[last]; setDbMeta(type, m); } catch (e) {}
+  }
+  if (orig && orig !== after) dbTouch(type, orig, true);
+  if (after) dbTouch(type, after, false);
+  window._dbEditLast[idx] = after;
 }
 
 function dbUpdateRow(idx, field, val, type) {
@@ -15731,7 +15942,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.32';
+  const APP_VER = '4.33';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
