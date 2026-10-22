@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.34</title>
+<title>AirconTech Field Reports v4.35</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.34</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.35</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -2565,6 +2565,7 @@ function rebuildDropdownsAfterDBSave(type) {
     if (all || type === 'technicians') { try { fillLoginNames(); } catch (e) {} }
     if (all || type === 'templates') { try { renderTemplateSelect(); } catch (e) {} }
     if (all || type === 'partSets')  { try { renderPartSetButtons(); } catch (e) {} }
+    if (all || type === 'contacts')  { try { contactRefreshItems(); } catch (e) {} }
   } catch (e) { console.warn('rebuildDropdownsAfterDBSave:', e); }
 }
 
@@ -3470,7 +3471,7 @@ var COMPLICATIONS = [
   'Extreme cold','Extreme hot','Bear in the area','Many Mosquitos',
   'Very dusty conditions','Very Smoky conditions','Retrieving parts','Locating unit in the mine',
   'Very muddy roads','Icy roads','Lightning stand-down','Safety stand-down',
-  'Awkward positions','Bus was late','Performing electrical diagnosis'
+  'Awkward positions','Bus was late','Performing electrical diagnosis','Paperwork'
 ];
 
 var CANADA_HOLIDAYS = {
@@ -3501,6 +3502,7 @@ const DB_KEYS = {
   equipment: 'aircon_db_equip_v1',
   partSets: 'aircon_db_partsets_v1',
   templates: 'aircon_db_templates_v1',
+  contacts: 'aircon_db_contacts_v1',
   equipmentSeedVer: 'aircon_db_equip_seed_ver',
 };
 
@@ -5221,9 +5223,11 @@ function collectData() {
   const shiftSel   = shiftDD ? shiftDD.selected : null;
   const contactDD  = dropdownRegistry['contact'];
   const contactSel = contactDD ? contactDD.selected : null;
-  const contactVal = contactSel
+  let contactVal = contactSel
     ? (contactSel._custom ? contactSel.value : (typeof contactSel === 'string' ? contactSel : ''))
     : '';
+  // Whatever stands in the box counts, picked from the list or typed.
+  if (!contactVal && contactDD) contactVal = String((contactDD.input && contactDD.input.value) || '').trim();
 
   // Complications (C4)
   const c4arr = [];
@@ -12619,7 +12623,7 @@ function renderDBTable(type) {
 // know a record the newer edit wins. A deletion is a mark with its own
 // timestamp, so it propagates like any other edit instead of being undone by
 // the next device that still has the record.
-var DB_SYNC_TYPES = ['parts', 'technicians', 'trucks', 'equipment', 'partSets', 'templates'];
+var DB_SYNC_TYPES = ['parts', 'technicians', 'trucks', 'equipment', 'partSets', 'templates', 'contacts'];
 
 function dbItemKey(type, item) {
   if (item == null) return '';
@@ -13541,6 +13545,9 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.35', items: [
+    'Contact: names you type are added to the list on every device; \u2715 next to a name removes it.',
+    'C4: \u201cPaperwork\u201d added.' ] },
   { v: '4.34', items: [
     'Time Card: \u201cOvertime \u2014 whole shift\u201d and \u201cSTAT holiday\u201d for each technician, filled in from the field reports.',
     'STAT holidays: reminder in the Field Report; hours in Regular and Overtime with a big STAT mark on the time card.' ] },
@@ -14314,6 +14321,52 @@ function onDateChange() {
   updateReportNumber();
 }
 
+// ── Contact list, shared by every device ──────────────────────────────
+// A name typed into Contact is kept for everyone; the cross next to any name
+// (shift leaders included - crews change every few months) removes it for
+// everyone. Removal is a dated mark, so a device that still has the name does
+// not bring it back.
+function getContactsDB() {
+  try { return JSON.parse(localStorage.getItem(DB_KEYS.contacts) || '[]') || []; } catch (e) { return []; }
+}
+function contactItems(leaders) {
+  const out = [], seen = {};
+  (leaders || []).concat(getContactsDB()).forEach(n => {
+    n = String(n || '').trim();
+    const k = n.toLowerCase();
+    if (!n || seen[k] || dbIsDeleted('contacts', n)) return;
+    seen[k] = 1; out.push(n);
+  });
+  return out.sort((a, b) => a.localeCompare(b));
+}
+function contactRefreshItems() {
+  const dd = dropdownRegistry['contact'];
+  if (!dd) return;
+  dd.setItems(contactItems(window._contactLeaders));
+  try { filterDropdown('contact', dd.search ? dd.search.value : ''); } catch (e) {}
+}
+function contactRemember(name) {
+  name = String(name || '').trim().replace(/\s+/g, ' ');
+  if (!name) return;
+  const list = getContactsDB();
+  const had = list.some(n => String(n).toLowerCase() === name.toLowerCase());
+  if (had && !dbIsDeleted('contacts', name)) return;
+  if (!had) list.push(name);
+  localStorage.setItem(DB_KEYS.contacts, JSON.stringify(list));
+  try { dbTouch('contacts', name, false); dbSyncSchedule(); } catch (e) {}
+  contactRefreshItems();
+}
+function contactForget(name) {
+  name = String(name || '').trim();
+  if (!name) return;
+  if (!confirm('Remove \u201c' + name + '\u201d from the contact list for everyone?')) return;
+  const list = getContactsDB().filter(n => String(n).toLowerCase() !== name.toLowerCase());
+  localStorage.setItem(DB_KEYS.contacts, JSON.stringify(list));
+  try { dbTouch('contacts', name, true); dbSyncSchedule(); } catch (e) {}
+  contactRefreshItems();
+  snack('Removed from contacts: ' + name);
+}
+
 function rebuildContactDropdown(leaders, defaultLeader) {
   // Remove old dropdown if it exists in body (portal cleanup)
   const old = dropdownRegistry['contact'];
@@ -14322,17 +14375,23 @@ function rebuildContactDropdown(leaders, defaultLeader) {
   }
   delete dropdownRegistry['contact'];
 
+  window._contactLeaders = leaders || [];
   createDropdown({
     id: 'contact',
     container: 'dd-contact',
-    items: leaders && leaders.length ? leaders : [],
+    items: contactItems(leaders),
+    onDelete: contactForget,
     placeholder: leaders && leaders.length === 1
       ? `Selected: ${leaders[0]} — click to change or type custom`
       : 'Select shift leader or type custom name…',
     allowCustom: true,
     initialValue: defaultLeader || '',
     onSelect: (v) => {
-      // value handled internally
+      // A name typed in (Enter) reached this handler and was dropped here, so
+      // the report saved an empty contact and nothing printed.
+      const dd = dropdownRegistry['contact'];
+      if (dd) dd.selected = v || null;
+      if (v && v._custom) contactRemember(v.value);
     }
   });
 
@@ -14351,7 +14410,7 @@ function createDropdown(opts) {
   const {
     id, container, items, placeholder = 'Select…',
     valueKey, displayFn, subFn,
-    onSelect, allowCustom = false, initialValue = ''
+    onSelect, allowCustom = false, initialValue = '', onDelete = null
   } = opts;
 
   const target = (typeof container === 'string') ? document.getElementById(container) : container;
@@ -14389,7 +14448,7 @@ function createDropdown(opts) {
   const state = {
     items, displayFn, subFn, valueKey,
     selected: null, filtered: items.slice(),
-    activeIdx: -1, allowCustom, onSelect, id
+    activeIdx: -1, allowCustom, onSelect, id, onDelete
   };
   state.setItems = function(newItems) {
     state.items = newItems || [];
@@ -14498,12 +14557,21 @@ function renderList(id) {
     const display = s.displayFn ? s.displayFn(item) : defaultDisplay(item, s.valueKey);
     const sub = s.subFn ? s.subFn(item) : '';
     const activeCls = idx === s.activeIdx ? ' active' : '';
+    const del = s.onDelete ? `<span class="sd-del" data-idx="${idx}" title="Remove from the list"
+      style="float:right;color:#c0392b;font-weight:700;font-size:15px;line-height:1;padding:4px 10px;margin:-4px -6px 0 8px;border-radius:5px;cursor:pointer">\u2715</span>` : '';
     return `<div class="sd-option${activeCls}" data-idx="${idx}">
-      <div>${highlight(display, q)}</div>
+      ${del}<div>${highlight(display, q)}</div>
       ${sub ? `<div class="sd-sub">${highlight(sub, q)}</div>` : ''}
     </div>`;
   }).join('') + (items.length > MAX ? `<div class="sd-empty">…and ${items.length - MAX} more — refine your search</div>` : '');
 
+  // The cross removes the entry instead of picking it.
+  s.list.querySelectorAll('.sd-del').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      s.onDelete(slice[parseInt(el.dataset.idx, 10)]);
+    });
+  });
   // Bind click
   s.list.querySelectorAll('.sd-option').forEach(el => {
     el.addEventListener('mousedown', (e) => {
@@ -14555,7 +14623,9 @@ function selectItem(id, item) {
   } catch (err) {
     console.error('dropdown onSelect error (' + id + '):', err);
   }
+  s._picking = true;           // a pick from the list, not text left in the search box
   closeDropdown();
+  s._picking = false;
   // Update required field highlighting
   setTimeout(() => rfApplyDD(id), 30);
 }
@@ -14630,6 +14700,16 @@ document.addEventListener('keydown', e => {
 function closeDropdown() {
   if (!openDropdownId) return;
   const s = dropdownRegistry[openDropdownId];
+  // Contact: a name typed and then tapped away from (no Enter on an iPad
+  // keyboard) is kept instead of vanishing.
+  if (openDropdownId === 'contact' && s && s.search && !s._picking) {
+    const typed = s.search.value.trim();
+    if (typed && !(s.filtered || []).some(x => String(x).toLowerCase() === typed.toLowerCase())) {
+      s.input.value = typed; s.selected = { _custom: true, value: typed };
+      s.wrap.classList.add('has-value');
+      try { contactRemember(typed); } catch (e) {}
+    }
+  }
   if (s) { s.wrap.classList.remove('open'); s.dropdown.style.display = 'none'; }
   openDropdownId = null;
   window.removeEventListener('scroll', repositionOpen, true);
@@ -16114,7 +16194,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.34';
+  const APP_VER = '4.35';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
