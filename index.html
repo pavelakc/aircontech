@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.33</title>
+<title>AirconTech Field Reports v4.34</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.33</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.34</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -1179,6 +1179,7 @@
     <!-- ==================== FIELD REPORT VIEW ==================== -->
     <div id="view-fr" class="view-pane" style="display:none">
     <div id="validation-summary" class="validation-summary"></div>
+    <div id="fr-holiday" style="display:none;margin-bottom:12px;padding:10px 14px;background:#fde8f3;border:1px solid #f3b6d6;border-left:5px solid #b0006a;border-radius:8px;color:#7a004a;font-size:14px"></div>
     <div id="sec-header">
       <div class="section-title">Field Report</div>
       <div class="section-sub">Syncrude Mildred Lake — AirconTech Inc.</div>
@@ -1668,6 +1669,7 @@
               </tr>
             </tfoot>
           </table>
+          <div id="tc-flag-note"></div>
 
           <!-- Two groups on purpose: the time-card buttons print the card on
                this screen, the package button prints the whole shift. They
@@ -6999,6 +7001,7 @@ function addTechRow() {
   techRows.push(id);
   techData[id] = {name:'', truck:'', timeIn:'', timeOut:'', reg:true, ot:false, stat:false, lockout:false};
   setTimeout(syncTimeFromTimeCard, 0);
+  setTimeout(() => { try { frHolidayApply(); } catch (e) {} }, 0);
   // <input type="time"> renders as AM/PM under an en-US locale and its step
   // cannot be relied on, so Time In/Out use the same 10-minute 24-hour list
   // as the Time Card (generateTimeOptions(), 00:00 .. 23:50).
@@ -7029,7 +7032,7 @@ function addTechRow() {
       <div class="checkboxes">
         <label class="check-label"><input type="checkbox" id="reg-${id}" checked onchange="techData[${id}].reg=this.checked"> REG</label>
         <label class="check-label"><input type="checkbox" id="ot-${id}" onchange="techData[${id}].ot=this.checked"> OT</label>
-        <label class="check-label"><input type="checkbox" id="stat-${id}" onchange="techData[${id}].stat=this.checked"> STAT</label>
+        <label class="check-label"><input type="checkbox" id="stat-${id}" onchange="techData[${id}].stat=this.checked;this.dataset.manual='1'"> STAT</label>
 
       </div>
     </div>
@@ -8308,20 +8311,32 @@ function rebuildTimeCard() {
 function recalcTimeCard() {
   // Keep an open field report's Time In/Out in step with its Time Card row.
   setTimeout(syncTimeFromTimeCard, 0);
-  let totReg = 0, totOt = 0, totNight = 0;
+  let totReg = 0, totOt = 0, totNight = 0, totWorked = 0;
+  // isNightShift lived only inside rebuildTimeCard(); reading it here threw
+  // for every row starting before 18:00, so the hours never showed on screen.
+  const _sh = String(((timeCardRows || [])[0] || {}).shift || (dropdownRegistry['tc-shift'] && dropdownRegistry['tc-shift'].input && dropdownRegistry['tc-shift'].input.value) || '').trim();
+  const isNightShift = /N$/i.test(_sh);
+  // The table is shared by every technician on the card. It shows a STAT or
+  // whole-shift OT only when it applies to all of them; otherwise the note
+  // under the table says who differs.
+  let _flags = [];
+  try { _flags = tcRefreshFlags(); } catch (e) {}
+  const _allStat = _flags.length && _flags.every(f => f.stat);
+  const _allOt   = _flags.length && _flags.every(f => f.ot);
+  window._tcFlagSig = _flags.map(f => f.name + (f.ot ? 'o' : '') + (f.stat ? 's' : '')).join('|');
+  setTimeout(() => { try { updateTcPrintButton(); } catch (e) {} }, 0);
 
   timeCardRows.forEach((r, idx) => {
     const hrs = calcHours(r.start, r.end);
     let reg = 0, ot = 0, night = 0;
     if (hrs > 0) {
-      // Night = marker only, hours ALWAYS go to REG
-      // OT + REG = double pay (both show same hours)
-      if (r.ot) {
-        ot  = hrs;
-        reg = hrs; // double pay
-      } else {
-        reg = hrs; // always REG regardless of night flag
-      }
+      // Night = marker only. A row marked OT is Overtime only (it used to be
+      // counted twice here while the printed card had it once). STAT is the
+      // one case paid twice: Regular and Overtime.
+      totWorked += hrs;
+      if (_allStat)              { reg = hrs; ot = hrs; }
+      else if (r.ot || _allOt)   { ot = hrs; }
+      else                       { reg = hrs; }
       // Night is just an informational marker (X in print)
       // Auto-detect night if start time >= 18:20
       if (!r.night && r.start) {
@@ -8350,8 +8365,8 @@ function recalcTimeCard() {
     if (totEl)   totEl.textContent   = (reg+ot+night) > 0 ? (reg+ot+night).toFixed(2) : '—';
   });
 
-  const totalHours = totReg + totOt + totNight;
-  const totPaid = totalHours;
+  const totalHours = totWorked;               // hours actually covered, for the 12h check
+  const totPaid = totReg + totOt + totNight;
 
   // Update tfoot totals
   var el;
@@ -8450,7 +8465,14 @@ function updateTcPrintButton() {
   const b = document.getElementById('btn-tc-print');
   if (!b) return;
   const n = tcTechSlots().length;
-  b.textContent = n > 1 ? '🖨 Time Card (' + n + ')' : '🖨 Time Card';
+  let fl = [];
+  try { fl = tcRefreshFlags(); } catch (e) {}
+  // A technician picked or removed can change what the shared table shows.
+  const sig = fl.map(f => f.name + (f.ot ? 'o' : '') + (f.stat ? 's' : '')).join('|');
+  if (sig !== window._tcFlagSig) { window._tcFlagSig = sig; try { recalcTimeCard(); } catch (e) {} }
+  const nOt = fl.filter(f => f.ot && !f.stat).length, anyStat = fl.some(f => f.stat);
+  b.textContent = (n > 1 ? '🖨 Time Card (' + n + ')' : '🖨 Time Card') +
+    (anyStat ? ' \u00b7 STAT' : '') + (nOt ? ' \u00b7 ' + nOt + ' OT' : '');
 }
 
 // ---- Sidebar: collapsible form section list ----
@@ -8821,6 +8843,107 @@ function tcTechSlots() {
     });
   });
   return out;
+}
+
+// Field Report on a holiday: a reminder at the top and STAT ticked for each
+// technician (unticked again if the date moves off the holiday). A tick set
+// by hand is left alone.
+function frHolidayApply() {
+  const d = document.getElementById('f-date')?.value || '';
+  const h = isCanadianHoliday(d);
+  const ban = document.getElementById('fr-holiday');
+  if (ban) {
+    ban.style.display = h ? '' : 'none';
+    ban.innerHTML = h ? '\ud83c\udf89 <b>' + escapeHtml(h) + '</b> \u2014 STAT holiday. STAT is ticked for the technicians below (Regular + Overtime, double pay); untick it if it does not apply.' : '';
+  }
+  (typeof techRows !== 'undefined' ? techRows : []).forEach(id => {
+    const cb = document.getElementById('stat-' + id);
+    if (!cb || cb.dataset.manual === '1') return;
+    if (h && !cb.checked) { cb.checked = true; cb.dataset.auto = '1'; if (techData[id]) techData[id].stat = true; }
+    else if (!h && cb.dataset.auto === '1') { cb.checked = false; delete cb.dataset.auto; if (techData[id]) techData[id].stat = false; }
+  });
+}
+document.addEventListener('change', e => { if (e.target && e.target.id === 'f-date') { try { frHolidayApply(); } catch (x) {} } });
+document.addEventListener('input',  e => { if (e.target && e.target.id === 'f-date') { try { frHolidayApply(); } catch (x) {} } });
+
+// ── Overtime and STAT per technician ────────────────────────────────────
+// Each technician slot carries two ticks. They fill in by themselves - OT or
+// STAT ticked for that technician in any field report of the shift, or the
+// date being a holiday - and a tick changed by hand wins for that technician
+// and date.
+var _tcFlagManual = {};
+function tcFlagKey(name, kind) {
+  const d = document.getElementById('tc-date-start')?.value || '';
+  return d + '|' + String(name || '').split(/\s{2,}/)[0].trim().toLowerCase() + '|' + kind;
+}
+function tcAutoFlags(name) {
+  const short = String(name || '').split(/\s{2,}/)[0].trim();
+  const date = document.getElementById('tc-date-start')?.value || '';
+  const holiday = isCanadianHoliday(date);
+  const out = { ot: false, stat: !!holiday, statName: holiday || '', otSrc: '', statSrc: holiday ? holiday : '' };
+  if (!short) return out;
+  const frs = (timeCardRows || []).map(r => r.fr).filter(Boolean);
+  const all = (typeof loadSavedReports === 'function' ? loadSavedReports() : []) || [];
+  all.filter(r => frs.includes(r.reportNum)).forEach(r => (r.techs || []).forEach(t => {
+    const tn = String(t.name || '').split(/\s{2,}/)[0].trim();
+    if (!tn || !sameTech(tn, short)) return;
+    if (t.ot && !out.ot) { out.ot = true; out.otSrc = 'from field report'; }
+    if (t.stat && !out.stat) { out.stat = true; out.statSrc = 'from field report'; }
+  }));
+  return out;
+}
+function tcFlagsFor(name) {
+  const a = tcAutoFlags(name);
+  const mo = _tcFlagManual[tcFlagKey(name, 'ot')], ms = _tcFlagManual[tcFlagKey(name, 'stat')];
+  return { ot: mo !== undefined ? mo : a.ot, stat: ms !== undefined ? ms : a.stat,
+           statName: a.statName, otSrc: mo !== undefined ? '' : a.otSrc, statSrc: ms !== undefined ? '' : a.statSrc };
+}
+function tcSetFlag(n, kind, on) {
+  const name = tcSlotName(n);
+  if (!name) return;
+  _tcFlagManual[tcFlagKey(name, kind)] = !!on;
+  recalcTimeCard();
+  updateTcPrintButton();
+}
+// Draws/updates the two ticks in every slot and the note under the table.
+function tcRefreshFlags() {
+  const res = [];
+  tcAllSlotNumbers().forEach(n => {
+    const ids = tcSlotIds(n);
+    const badge = document.getElementById(ids.badge);
+    const block = badge && badge.closest('.form-group') && badge.closest('.form-group').parentElement;
+    if (!block) return;
+    let box = document.getElementById('tc-flags-' + n);
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'tc-flags-' + n;
+      box.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:8px';
+      block.appendChild(box);
+    }
+    const name = tcSlotName(n);
+    if (!name) { box.innerHTML = ''; return; }
+    const f = tcFlagsFor(name);
+    res.push(Object.assign({ n, name: name.split(/\s{2,}/)[0].trim() }, f));
+    const lab = (kind, on, text, src, col, bg) =>
+      '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;font-size:12.5px;font-weight:700;cursor:pointer;' +
+      (on ? 'background:' + bg + ';border:1.5px solid ' + col + ';color:' + col : 'background:#fff;border:1px solid #d5dce6;color:#33415c') + '">' +
+      '<input type="checkbox" ' + (on ? 'checked ' : '') + 'onchange="tcSetFlag(' + n + ',\'' + kind + '\',this.checked)" style="width:17px;height:17px;margin:0">' +
+      text + (src ? '<span style="font-weight:400;font-size:11px;margin-left:auto">' + escapeHtml(src) + '</span>' : '') + '</label>';
+    box.innerHTML = lab('ot', f.ot, 'Overtime \u2014 whole shift', f.ot ? f.otSrc : '', '#8a3d00', '#fff1e0') +
+                    lab('stat', f.stat, 'STAT holiday', f.stat ? f.statSrc : '', '#b0006a', '#fde8f3');
+  });
+  const note = document.getElementById('tc-flag-note');
+  if (note) {
+    const lines = [];
+    const st = res.filter(f => f.stat), ot = res.filter(f => f.ot && !f.stat);
+    if (st.length) lines.push('<div style="margin:8px 0 0;padding:8px 12px;background:#fde8f3;border-left:4px solid #b0006a;border-radius:6px;font-size:13px;color:#7a004a">' +
+      '\ud83c\udf89 <b>' + escapeHtml(st[0].statName || 'STAT') + ' \u2014 STAT holiday</b> for ' + escapeHtml(st.map(f => f.name).join(', ')) +
+      ': hours in Regular <b>and</b> Overtime (double pay).</div>');
+    if (ot.length) lines.push('<div style="margin:8px 0 0;padding:8px 12px;background:#fff1e0;border-left:4px solid #e67e22;border-radius:6px;font-size:13px;color:#8a3d00">' +
+      '\u23f1 <b>' + escapeHtml(ot.map(f => f.name).join(', ')) + '</b> \u2014 all hours as <b>Overtime</b> on ' + (ot.length > 1 ? 'their' : 'the') + ' time card.</div>');
+    note.innerHTML = lines.join('');
+  }
+  return res;
 }
 
 function tcAddTechSlot() {
@@ -9698,10 +9821,16 @@ function _timeCardModel(techName, badgeNum, truckNum) {
     endDate = addDaysLocal(date, 1);
   }
   let totReg = 0, totOt = 0, hasNight = false;
+  let fl = { ot: false, stat: false, statName: '' };
+  try { fl = tcFlagsFor(techName) || fl; } catch (e) {}
   const lines = rows.map(r => {
     const hrs = (typeof calcHours === 'function') ? calcHours(r.start, r.end) : 0;
     let reg = 0, ot = 0;
-    if (hrs > 0) { if (r.ot) ot = hrs; else reg = hrs; }
+    if (hrs > 0) {
+      if (fl.stat) { reg = hrs; ot = hrs; }          // STAT: paid twice
+      else if (r.ot || fl.ot) ot = hrs;
+      else reg = hrs;
+    }
     totReg += reg; totOt += ot;
     if (r.night) hasNight = true;
     return { fr: r.fr || '', job: r.job || '', start: r.start || '', end: r.end || '',
@@ -9712,7 +9841,8 @@ function _timeCardModel(techName, badgeNum, truckNum) {
            date, endDate, shift: shift || '\u2014', isNight, lines,
            totReg: totReg > 0 ? totReg.toFixed(1) : '',
            totOt: totOt > 0 ? totOt.toFixed(1) : '',
-           hasNight: hasNight ? 'X' : '' };
+           hasNight: hasNight ? 'X' : '',
+           stat: fl.stat ? (fl.statName || 'STAT') : '' };
 }
 
 // The time card as one drawing, used by the Time Card button and the shift
@@ -9903,6 +10033,17 @@ async function _drawTimeCardPage(pdfDoc, m) {
   sig("Technician's Signature:", 446, after + 130, 140);
   sig("Manager's Remarks:", 28, after + 161, 196);
   sig("Manager's Signature:", 446, after + 161, 148);
+  if (m.stat) {
+    // Big and only on a STAT card, over the empty lower rows of the table.
+    const PINK = hex('#b0006a');
+    const W = 340, H = 80, bx = (612 - W) / 2, by = 792 * 0.40;
+    page.drawRectangle({ x: bx, y: by, width: W, height: H, borderColor: PINK, borderWidth: 4,
+                         color: hex('#fff0f7'), opacity: 0.94 });
+    const t1 = 'STAT HOLIDAY', s1 = 34;
+    page.drawText(t1, { x: bx + (W - FB.widthOfTextAtSize(t1, s1)) / 2, y: by + 36, size: s1, font: FB, color: PINK });
+    const t2 = fit((m.stat !== 'STAT' ? m.stat + '  \u00b7  ' : '') + 'DOUBLE PAY', FB, 12, W - 20);
+    page.drawText(t2, { x: bx + (W - FB.widthOfTextAtSize(t2, 12)) / 2, y: by + 15, size: 12, font: FB, color: PINK });
+  }
   return page;
 }
 
@@ -13400,6 +13541,9 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.34', items: [
+    'Time Card: \u201cOvertime \u2014 whole shift\u201d and \u201cSTAT holiday\u201d for each technician, filled in from the field reports.',
+    'STAT holidays: reminder in the Field Report; hours in Regular and Overtime with a big STAT mark on the time card.' ] },
   { v: '4.33', items: [
     'Switching templates replaces the previous template\u2019s parts and C4 ticks instead of adding to them. What you added yourself stays.',
     'Database \u2192 Technicians: name and badge number in separate boxes; badge problems are highlighted.',
@@ -15192,8 +15336,36 @@ function importData(event) {
   event.target.value = '';
 }
 
+// The holidays used to be typed in for 2026 only, so STAT would have stopped
+// working on 1 January 2027. They are worked out for any year instead.
+function holidaysForYear(y) {
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const nthMonday = (m, n) => { const d = new Date(y, m, 1); d.setDate(1 + ((8 - d.getDay()) % 7) + 7 * (n - 1)); return d; };
+  // Easter (anonymous Gregorian algorithm) for Good Friday
+  const a = y % 19, b = Math.floor(y / 100), c = y % 100, dd = Math.floor(b / 4), e = b % 4,
+        f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - dd - g + 15) % 30,
+        i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451),
+        month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+  const goodFriday = new Date(y, month - 1, day - 2);
+  const victoria = new Date(y, 4, 24); victoria.setDate(24 - ((victoria.getDay() + 6) % 7));   // Monday on or before May 24
+  const out = {};
+  out[y + '-01-01'] = "New Year's Day";
+  out[iso(nthMonday(1, 3))] = 'Family Day';
+  out[iso(goodFriday)] = 'Good Friday';
+  out[iso(victoria)] = 'Victoria Day';
+  out[y + '-07-01'] = 'Canada Day';
+  out[iso(nthMonday(7, 1))] = 'Heritage Day';
+  out[iso(nthMonday(8, 1))] = 'Labour Day';
+  out[y + '-09-30'] = 'National Day for Truth and Reconciliation';
+  out[iso(nthMonday(9, 2))] = 'Thanksgiving';
+  out[y + '-11-11'] = 'Remembrance Day';
+  out[y + '-12-25'] = 'Christmas Day';
+  out[y + '-12-26'] = 'Boxing Day';
+  return out;
+}
 function isCanadianHoliday(dateStr) {
-  return CANADA_HOLIDAYS[dateStr] || null;
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return null;
+  return holidaysForYear(+dateStr.slice(0, 4))[dateStr.slice(0, 10)] || null;
 }
 
 // Switching views left the new page sitting at the old page's scroll offset,
@@ -15942,7 +16114,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.33';
+  const APP_VER = '4.34';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
