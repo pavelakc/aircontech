@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.35</title>
+<title>AirconTech Field Reports v4.36</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.35</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.36</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -4294,6 +4294,9 @@ function initSupabaseWithKey(url, key) {
         // Poll for updates every 30 seconds (no real-time subscription to avoid postMessage errors)
         if (window._syncInterval) clearInterval(window._syncInterval);
         window._syncInterval = setInterval(async () => {
+          // A tablet left with the app open in the background kept polling
+          // all shift long; nobody is looking, so nothing is fetched.
+          if (document.hidden) return;
           if (_sbClient) {
             await syncPullReports();
             setSyncStatus('online', '☁ Synced');
@@ -4304,7 +4307,14 @@ function initSupabaseWithKey(url, key) {
               try { await dbSyncAuto('poll'); } catch (e) {}
             }
           }
-        }, 30000);
+        }, 60000);
+        // Coming back to the app: catch up at once instead of waiting a minute.
+        if (!window._syncVisHook) {
+          window._syncVisHook = true;
+          document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && window._sbClient) { try { syncPullReports(); } catch (e) {} }
+          });
+        }
       })
       .catch(e => {
         console.error('Supabase catch:', e);
@@ -4373,10 +4383,33 @@ async function syncPullAll() {
     // report ever written, every 30 seconds, onto every device - which is
     // what filled the storage - and the server caps a reply at 1000 rows, so
     // past that the history would have been cut short without a word.
-    const since = new Date(Date.now() - LOCAL_WINDOW_DAYS * 86400000).toISOString();
+    //
+    // Traffic: every open device downloaded the whole 30-day window (about
+    // 1.1 MB, 337 reports) every 30 seconds - that alone used up the free
+    // monthly allowance. Now the full window is read once per session, and
+    // each poll after that asks only for what changed since the last one,
+    // which is usually nothing. A short overlap covers small clock
+    // differences between tablets (updated_at is written by the device that
+    // saved); anything beyond it is picked up by the full read at the next
+    // start of the app.
+    const CURSOR_KEY = 'aircon_pull_cursor_v1';
+    const fullSince = new Date(Date.now() - LOCAL_WINDOW_DAYS * 86400000).toISOString();
+    let cursor = null;
+    try { cursor = localStorage.getItem(CURSOR_KEY); } catch (e) {}
+    const full = !window._pulledFullThisSession || !cursor;
+    let since = fullSince;
+    if (!full) {
+      const c = Date.parse(cursor) - 10 * 60000;   // tablets keep network time; 10 min is plenty
+      if (!isNaN(c) && c > Date.parse(fullSince)) since = new Date(c).toISOString();
+    }
     const {data, error} = await _sbClient.from('field_reports')
-      .select('report_num,data').gte('updated_at', since).order('updated_at', {ascending:false});
+      .select('report_num,data,updated_at').gte('updated_at', since).order('updated_at', {ascending:false});
     if (!error && data) {
+      let maxU = cursor || '';
+      data.forEach(r => { if (r.updated_at && String(r.updated_at) > maxU) maxU = String(r.updated_at); });
+      if (!maxU) maxU = new Date().toISOString();
+      try { localStorage.setItem(CURSOR_KEY, maxU); } catch (e) {}
+      window._pulledFullThisSession = true;
       const cloudAll = data.map(r => ({...r.data, reportNum: r.report_num}));
       cloudSeenMark(cloudAll);
       digestFromReports(cloudAll);
@@ -4413,7 +4446,7 @@ async function manualSync() {
     // has to carry those too - it used to sync reports only, which is why a
     // newly added part never left the device.
     let dbRes = { ok: false, changed: 0 };
-    try { dbRes = await syncDbPullPush(); } catch (e) {}
+    try { dbRes = await syncDbPullPush(true); } catch (e) {}
     const count = (typeof loadSavedReports === 'function') ? loadSavedReports().length : 0;
     setSyncStatus('online', '☁ Synced');
     var ce = document.getElementById('sync-count');
@@ -12680,6 +12713,10 @@ function setDbMeta(type, meta) {
 
 function dbTouch(type, key, deleted) {
   if (!key) return;
+  try {
+    const ch = JSON.parse(localStorage.getItem('aircon_db_changed_v1') || '{}') || {};
+    if (!ch[type]) { ch[type] = true; localStorage.setItem('aircon_db_changed_v1', JSON.stringify(ch)); }
+  } catch (e) {}
   const meta = getDbMeta(type);
   meta[key] = { u: new Date().toISOString(), d: !!deleted };
   setDbMeta(type, meta);
@@ -12720,12 +12757,32 @@ function mergeDbList(type, localList, localMeta, cloudList, cloudMeta) {
   return { list, meta };
 }
 
-async function syncDbPullPush() {
+async function syncDbPullPush(force) {
   if (!window._sbClient) return { ok: false, reason: 'offline' };
   let changed = 0, pulled = 0, missing = false;
+  // One small question first - when was each shared list last written? - and
+  // only lists that changed on either side are downloaded. Every list used to
+  // be fetched in full every 90 seconds on every device.
+  let stamps = null, seenStamps = {}, localChanged = {};
+  try {
+    const { data, error } = await _sbClient.from('shared_db').select('name,updated_at');
+    if (!error && data) { stamps = {}; data.forEach(r => { stamps[r.name] = String(r.updated_at || ''); }); }
+  } catch (e) {}
+  try { seenStamps = JSON.parse(localStorage.getItem('aircon_db_stamps_v1') || '{}') || {}; } catch (e) {}
+  try { localChanged = JSON.parse(localStorage.getItem('aircon_db_changed_v1') || '{}') || {}; } catch (e) {}
+  const doneType = (type, stamp) => {
+    if (stamp) seenStamps[type] = stamp;
+    delete localChanged[type];
+    try {
+      localStorage.setItem('aircon_db_stamps_v1', JSON.stringify(seenStamps));
+      localStorage.setItem('aircon_db_changed_v1', JSON.stringify(localChanged));
+    } catch (e) {}
+  };
   for (const type of DB_SYNC_TYPES) {
     const storeKey = DB_KEYS[type];
     if (!storeKey) continue;
+    const same = (a, b) => !!a && !!b && Date.parse(a) === Date.parse(b);   // server and ISO spellings differ
+    if (!force && stamps && stamps[type] && same(stamps[type], seenStamps[type]) && !localChanged[type]) continue;
     // Read through the normal getters: each one falls back to the built-in list
     // when storage is empty. Reading localStorage directly gave an empty array
     // for technicians, trucks, part sets and templates on a device whose
@@ -12765,6 +12822,7 @@ async function syncDbPullPush() {
     const afterLocal = JSON.stringify(merged.list);
     localStorage.setItem(storeKey, afterLocal);
     setDbMeta(type, merged.meta);
+    let newStamp = stamps ? stamps[type] : '';
     // A pull can change this device without anything being pushed, and the
     // caller has to know: the dropdowns and the open table are still showing
     // the old list until they are rebuilt.
@@ -12772,13 +12830,17 @@ async function syncDbPullPush() {
     if (merged.list.length !== cloudList.length ||
         JSON.stringify(merged.meta) !== JSON.stringify(cloudMeta)) {
       try {
-        await _sbClient.from('shared_db').upsert({
+        const ts = new Date().toISOString();
+        const up = await _sbClient.from('shared_db').upsert({
           name: type, data: merged.list, meta: merged.meta,
-          updated_at: new Date().toISOString(),
+          updated_at: ts,
         }, { onConflict: 'name' });
+        if (up && up.error) throw up.error;
         changed++;
-      } catch (e) { missing = true; }
+        newStamp = ts;           // what the server now holds for this list
+      } catch (e) { missing = true; continue; }
     }
+    doneType(type, newStamp);
   }
   return { ok: !missing, changed, pulled };
 }
@@ -12791,7 +12853,7 @@ async function syncDbPullPush() {
 // and re-pulled on a slow background tick so another technician's additions
 // turn up without anyone doing anything.
 var DB_SYNC_DEBOUNCE = 2500;      // ms of quiet before an edit is pushed
-var DB_SYNC_POLL_EVERY = 3;       // every 3rd report poll, i.e. about 90 s
+var DB_SYNC_POLL_EVERY = 3;       // every 3rd report poll, i.e. about 3 minutes
 var _dbSyncTimer = null, _dbSyncBusy = false, _dbSyncTick = 0;
 
 function dbSyncSchedule() {
@@ -12807,7 +12869,7 @@ async function dbSyncAuto(reason) {
   if (!window._sbClient || _dbSyncBusy) return { ok: false, reason: 'skipped' };
   _dbSyncBusy = true;
   let res = { ok: false, changed: 0, pulled: 0 };
-  try { res = await syncDbPullPush(); } catch (e) {}
+  try { res = await syncDbPullPush(reason === 'startup' || reason === 'edit-save'); } catch (e) {}
   _dbSyncBusy = false;
   if (!res.ok) {
     // Silence here would be the confusing kind: the lists simply never travel
@@ -16194,7 +16256,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.35';
+  const APP_VER = '4.36';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
