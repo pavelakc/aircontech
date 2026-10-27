@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.36</title>
+<title>AirconTech Field Reports v4.37</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.36</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.37</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -5002,6 +5002,7 @@ function initForm() {
 
 function startNewReport() {
   if (!confirm('Start a new report? Unsaved changes will be lost.')) return;
+  window._formDirty = false;
   window._editingReportNum = null; window._editingReportId = null;   // fresh report
   try { initForm(); } catch(e) {}
   // The red list of missing fields belonged to the previous report; leaving it
@@ -5172,6 +5173,7 @@ function saveCurrentReport() {
     var _wasExisting = existingIdx >= 0;
     if (_wasExisting) all[existingIdx] = data; else all.unshift(data);
     var _announceSaved = function () {
+      window._formDirty = false;
       window._editingReportNum = currentNum;
       window._editingReportId = data.id;       // this form owns that record
       snack('✔ ' + (_wasExisting ? 'Updated' : 'Saved') + ': ' + currentNum);
@@ -5474,6 +5476,7 @@ function loadReportIntoForm(idx) {
 }
 
 function populateFormFromReport(r) {
+  setTimeout(() => { window._formDirty = false; }, 400);
   const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
   setVal('f-date', r.date);
   setVal('f-workorder', r.workorder);
@@ -7033,6 +7036,16 @@ function setTechTime(elId, value) {
   el.value = v;
 }
 
+// REG and OT are one choice: ticking one clears the other, and clearing OT
+// puts REG back, so a technician is never left with both or neither.
+function techHoursPick(id, kind, on) {
+  const reg = document.getElementById('reg-' + id), ot = document.getElementById('ot-' + id);
+  if (!reg || !ot) return;
+  if (kind === 'ot') { ot.checked = on; reg.checked = !on; }
+  else { reg.checked = on; ot.checked = !on; }
+  if (techData[id]) { techData[id].reg = reg.checked; techData[id].ot = ot.checked; }
+}
+
 function addTechRow() {
   const id = ++techIdCounter;
   techRows.push(id);
@@ -7067,8 +7080,8 @@ function addTechRow() {
     <div class="form-group">
       <label>Hours</label>
       <div class="checkboxes">
-        <label class="check-label"><input type="checkbox" id="reg-${id}" checked onchange="techData[${id}].reg=this.checked"> REG</label>
-        <label class="check-label"><input type="checkbox" id="ot-${id}" onchange="techData[${id}].ot=this.checked"> OT</label>
+        <label class="check-label"><input type="checkbox" id="reg-${id}" checked onchange="techHoursPick(${id},'reg',this.checked)"> REG</label>
+        <label class="check-label"><input type="checkbox" id="ot-${id}" onchange="techHoursPick(${id},'ot',this.checked)"> OT</label>
         <label class="check-label"><input type="checkbox" id="stat-${id}" onchange="techData[${id}].stat=this.checked;this.dataset.manual='1'"> STAT</label>
 
       </div>
@@ -8566,6 +8579,7 @@ var HELP_BY_TEXT = [
   [/^[✕×]$/, 'Removes this line.'],
   [/^✓\s*Completed$|^⏳\s*Incomplete$/, 'Job status printed on the report.'],
   [/^HVAC$|^F\/S$/, 'Type of work: HVAC or Fire Suppression.'],
+  [/(Day|Night)$/, 'Your crew for this shift. Asked only during shift change, 06:00\u201308:00 and 18:00\u201320:00.'],
   [/^Today$/, 'Sets the time card date to today.'],
   [/^⚡\s*Distribute 12h/, 'Splits a 12-hour shift evenly across the reports in the time card.'],
   [/^📦\s*Print Shift Package/, 'One PDF with the time card and every report of the shift.'],
@@ -13554,6 +13568,13 @@ function initLogin() {
 
   const ov = document.getElementById('login-overlay');
   if (ov) { ov.style.display = 'flex'; ov.style.zIndex = '9999'; }
+  // Back from an automatic reload: sign the same person in again.
+  try {
+    if (sessionStorage.getItem('aircon_autoreload') && !window._autoRestoreScheduled) {
+      window._autoRestoreScheduled = true;
+      setTimeout(appRestoreAfterReload, 1200);
+    }
+  } catch (e) {}
 }
 
 function showPINField() {
@@ -14107,6 +14128,94 @@ function supAskPassword() {
     else { el.querySelector('#sup-pin-err').textContent = 'Wrong password'; inp.value = ''; inp.focus(); }
   };
 }
+
+// ── Automatic update ────────────────────────────────────────────────────
+// A tablet keeps whatever version it loaded until the page is reloaded, and
+// an old version cannot be switched off from outside. So the app looks for
+// a newer one itself: version.json next to the page, a few bytes, checked
+// hourly and whenever the app comes back to the screen. With nothing typed
+// for 10 minutes and nothing unsaved it reloads on its own; otherwise a bar
+// offers the update. After 2 hours untouched it reloads anyway (again only
+// with nothing unsaved). The technician stays signed in across it.
+var APP_IDLE_UPDATE_MS = 10 * 60000;
+var APP_IDLE_RELOAD_MS = 2 * 3600000;
+window._lastActivity = Date.now();
+window._formDirty = false;
+['pointerdown', 'keydown', 'input'].forEach(ev => document.addEventListener(ev, () => { window._lastActivity = Date.now(); }, true));
+['input', 'change'].forEach(ev => document.addEventListener(ev, e => {
+  if (!e.isTrusted || !e.target || !e.target.closest) return;
+  if (e.target.closest('#view-fr, #view-inhaus')) window._formDirty = true;
+}, true));
+
+function appReload() {
+  try {
+    sessionStorage.setItem('aircon_autoreload', JSON.stringify({ view: window._currentView || 'fr', at: Date.now() }));
+    if (currentUser) sessionStorage.setItem('aircon_user', JSON.stringify(currentUser));
+  } catch (e) {}
+  location.reload();
+}
+function appRestoreAfterReload() {
+  let flag = null, saved = null;
+  try { flag = JSON.parse(sessionStorage.getItem('aircon_autoreload') || 'null'); } catch (e) {}
+  try { saved = JSON.parse(sessionStorage.getItem('aircon_user') || 'null'); } catch (e) {}
+  try { sessionStorage.removeItem('aircon_autoreload'); } catch (e) {}
+  if (!flag || !saved || !saved.name || currentUser) return;
+  if (Date.now() - (flag.at || 0) > 5 * 60000) return;        // a stale mark is ignored
+  try {
+    fillLoginNames(saved.name);
+    const sel = document.getElementById('login-name');
+    if (sel) sel.value = saved.name;
+    window._loginShiftType = saved.shiftType || null;
+    if (saved.role === 'supervisor') window._supPassOk = true;
+    loginAs(saved.role || 'technician');
+    if (currentUser && saved.shiftAt) {
+      currentUser.shiftAt = saved.shiftAt;
+      sessionStorage.setItem('aircon_user', JSON.stringify(currentUser));
+    }
+    if (currentUser && flag.view && flag.view !== 'fr') { try { switchView(flag.view); } catch (e) {} }
+  } catch (e) { console.warn('appRestoreAfterReload:', e); }
+}
+async function appCheckUpdate() {
+  try {
+    const res = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const j = await res.json();
+    const v = String(j && j.version || '');
+    const cur = (document.getElementById('app-ver-badge')?.textContent || '').replace(/^v/, '');
+    if (v && cur && verNum(v) > verNum(cur)) { window._updateAvailable = v; appUpdateTick(); }
+  } catch (e) {}
+}
+function appShowUpdateBar(v) {
+  if (document.getElementById('update-bar')) return;
+  const el = document.createElement('div');
+  el.id = 'update-bar';
+  el.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:8000;background:#1a3560;color:#fff;' +
+    'border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:14px;max-width:92vw';
+  el.innerHTML = '<span>\ud83d\udd04 New version <b>v' + escapeHtml(v) + '</b> is available</span>' +
+    '<button type="button" onclick="appUpdateNow()" style="background:#f0a800;color:#1a3560;border:none;border-radius:7px;padding:8px 14px;font-weight:800;cursor:pointer">Update</button>';
+  document.body.appendChild(el);
+}
+function appUpdateNow() {
+  if (window._formDirty) {
+    try { saveCurrentReport(); } catch (e) {}
+    if (window._formDirty) { snack('\u26a0 Save the report first, then update'); return; }
+  }
+  appReload();
+}
+function appUpdateTick() {
+  if (!currentUser) return;                                    // the sign-in screen reloads freely
+  const idle = Date.now() - (window._lastActivity || 0);
+  const busy = !!document.querySelector('#own-old-ask, #quick-add, #new-tech, #tech-confirm, #sup-pin, #whats-new');
+  if (window._updateAvailable) {
+    if (!window._formDirty && !busy && idle >= APP_IDLE_UPDATE_MS) { appReload(); return; }
+    appShowUpdateBar(window._updateAvailable);
+  }
+  if (!window._formDirty && !busy && idle >= APP_IDLE_RELOAD_MS) appReload();
+}
+setInterval(() => { if (!document.hidden) appUpdateTick(); }, 60000);
+setInterval(() => { if (!document.hidden) appCheckUpdate(); }, 3600000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) appCheckUpdate(); });
+setTimeout(appCheckUpdate, 20000);
 
 function showLoginError(msg) {
   const el = document.getElementById('login-error');
@@ -14835,6 +14944,7 @@ function snack(msg) {
 
 function clearForm() {
   if (!confirm('Clear all form data?')) return;
+  window._formDirty = false;
   try { ownClearApplied(); } catch (e) {}
   ['f-date','f-workorder','f-notif','f-po','f-invoice',
    'f-make','f-model','f-serial','f-category','f-hours',
@@ -15532,6 +15642,7 @@ function scrollViewTop() {
 }
 
 function switchView(view) {
+  window._currentView = view;
   // A portaled dropdown belongs to the view that opened it.
   if (typeof closeDropdown === 'function') closeDropdown();
   ['fr','saved','tc','db','inhaus','flra','super'].forEach(v => {
@@ -16256,7 +16367,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.36';
+  const APP_VER = '4.37';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
@@ -16271,7 +16382,9 @@ document.addEventListener('DOMContentLoaded', function() {
       localStorage.setItem('aircon_whatsnew_from', prevVer);
     }
     localStorage.setItem('aircon_app_version', APP_VER);
-    sessionStorage.removeItem('aircon_user');
+    // An automatic update keeps the technician signed in; a manual reload
+    // onto a new version still asks, as before.
+    if (!sessionStorage.getItem('aircon_autoreload')) sessionStorage.removeItem('aircon_user');
     console.log('AirconTech v' + APP_VER + ' - session cleared');
   }
   // ── Merge equipment seed updates into any locally saved DB ───────────
