@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.40</title>
+<title>AirconTech Field Reports v4.41</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.40</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.41</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -9525,13 +9525,13 @@ function openPrintWindow(bodyContent, title) {
 </head><body>
     <!-- On a phone or tablet this window has no browser chrome, so without an
          explicit way out the only escape was closing the whole app. -->
-    <div class="hint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="hint" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-left:100px">
       <button onclick="window.close(); setTimeout(function(){ history.back(); }, 150);"
-        style="background:#1a3560;color:#fff;border:none;border-radius:6px;padding:9px 16px;
-        font-size:14px;font-weight:700;cursor:pointer">&#8592; Back</button>
+        style="background:#1a3560;color:#fff;border:none;border-radius:8px;padding:12px 22px;
+        font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)">&#8592; Back</button>
       <button onclick="window.print()"
-        style="background:#f0a800;color:#1a3560;border:none;border-radius:6px;padding:9px 16px;
-        font-size:14px;font-weight:700;cursor:pointer">&#128424; Print / PDF</button>
+        style="background:#f0a800;color:#1a3560;border:none;border-radius:8px;padding:12px 22px;
+        font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25)">&#128424; Print / PDF</button>
       <span style="flex:1;min-width:200px">&#9989; Headers and footers (URL and page number) are already <b>turned off</b>.
       If they still show, open <b>More settings</b> in the print dialog and untick <b>Headers and footers</b>.</span>
     </div>
@@ -10246,7 +10246,7 @@ function _showPdfInWindow(win, bytes, label, pages) {
   win.document.write(
     '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(label) + '</title>' +
     '<style>html,body{margin:0;height:100%;font-family:Arial,Helvetica,sans-serif}' +
-    '#bar{background:#1a3560;color:#fff;padding:8px 14px;font-size:13px;display:flex;' +
+    '#bar{background:#1a3560;color:#fff;padding:8px 14px 8px 100px;font-size:13px;display:flex;' +
     'align-items:center;gap:12px}#bar button{background:#f0b429;color:#1a3560;border:none;' +
     'border-radius:5px;padding:6px 14px;font-weight:700;cursor:pointer}' +
     'iframe{border:0;width:100%;height:calc(100% - 37px)}</style></head><body>' +
@@ -10461,7 +10461,7 @@ async function printAllShiftReports() {
     win.document.write(
       '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(label) + '</title>' +
       '<style>html,body{margin:0;height:100%;font-family:Arial,Helvetica,sans-serif}' +
-      '#bar{background:#1a3560;color:#fff;padding:8px 14px;font-size:13px;display:flex;' +
+      '#bar{background:#1a3560;color:#fff;padding:8px 14px 8px 100px;font-size:13px;display:flex;' +
       'align-items:center;gap:12px}#bar button{background:#f0b429;color:#1a3560;border:none;' +
       'border-radius:5px;padding:6px 14px;font-weight:700;cursor:pointer}' +
       'iframe{border:0;width:100%;height:calc(100% - 37px)}</style></head><body>' +
@@ -10716,9 +10716,10 @@ function printInhausReport() {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inhaus - ${S(d.frNum)||'Report'}</title>
     <style>
-      .ih-print-bar { position:sticky; top:0; z-index:1000; display:flex; gap:10px; align-items:center;
-        background:#e8f4e8; border-bottom:1px solid #3a8a3a; padding:8px 12px; font-family:Arial,sans-serif; }
-      .ih-print-bar button { border:none; border-radius:6px; padding:9px 16px; font-size:14px; font-weight:700; cursor:pointer; }
+      .ih-print-bar { position:sticky; top:0; z-index:1000; display:flex; gap:12px; align-items:center;
+        background:#e8f4e8; border-bottom:1px solid #3a8a3a; padding:10px 12px 10px 100px; font-family:Arial,sans-serif; }
+      .ih-print-bar button { border:none; border-radius:8px; padding:12px 22px; font-size:16px; font-weight:700; cursor:pointer;
+        box-shadow:0 2px 6px rgba(0,0,0,.25); }
       @media print { .ih-print-bar, #scroll-top-btn { display:none !important; } }
     </style>
     </head><body>
@@ -13775,6 +13776,12 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.41', items: [
+    'Search lists stay above the on-screen keyboard.',
+    'Inhaus: \u201c\u29c9 = PAD\u201d button copies the PAD date from the one above.',
+    'Inhaus: technician name filled in automatically; tank size field same height as the others.',
+    'Print view: bigger Back / Print buttons, clear of the iPad window buttons.',
+    'External keyboard: Enter moves to the next field.' ] },
   { v: '4.39', items: [
     'Inhaus: tank sizes with pictures \u2014 tap a picture to enlarge it. 8.5 and 17 lb removed.',
     'PAD dates: months as numbers, recent years only, an expired PAD shows in red. A101 has one PAD date.',
@@ -14982,6 +14989,12 @@ function openDropdown(id) {
   // Listen for scroll/resize
   window.addEventListener('scroll', repositionOpen, true);
   window.addEventListener('resize', repositionOpen);
+  s._kbFit = false;
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', ddKeyboardFit);
+    window.visualViewport.addEventListener('scroll', repositionOpen);
+    setTimeout(ddKeyboardFit, 400);
+  }
 }
 
 function positionDropdown(id) {
@@ -14990,8 +15003,13 @@ function positionDropdown(id) {
   s.dropdown.style.display = 'flex';
   const rect = s.input.getBoundingClientRect();
   const dropdownHeight = 360; // approximate max
-  const spaceBelow = window.innerHeight - rect.bottom;
-  const spaceAbove = rect.top;
+  // On an iPad the on-screen keyboard does not shrink innerHeight; only the
+  // visual viewport knows how much of the screen is still visible.
+  const vv = window.visualViewport;
+  const visTop = vv ? vv.offsetTop : 0;
+  const visBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+  const spaceBelow = Math.max(0, visBottom - rect.bottom);
+  const spaceAbove = Math.max(0, rect.top - visTop);
   const showAbove = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
 
   s.dropdown.style.left = rect.left + 'px';
@@ -15000,12 +15018,31 @@ function positionDropdown(id) {
   if (showAbove) {
     s.dropdown.style.top = 'auto';
     s.dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-    s.dropdown.style.maxHeight = (spaceAbove - 16) + 'px';
+    s.dropdown.style.maxHeight = Math.max(120, spaceAbove - 16) + 'px';
   } else {
     s.dropdown.style.bottom = 'auto';
     s.dropdown.style.top = (rect.bottom + 4) + 'px';
-    s.dropdown.style.maxHeight = (spaceBelow - 16) + 'px';
+    s.dropdown.style.maxHeight = Math.max(120, spaceBelow - 16) + 'px';
   }
+}
+
+// When the keyboard comes up and leaves too little room under the field,
+// the field is scrolled up under the header so the list fits above the keys.
+function ddKeyboardFit() {
+  if (!openDropdownId) return;
+  const s = dropdownRegistry[openDropdownId], vv = window.visualViewport;
+  if (!s || !vv) return;
+  const kb = window.innerHeight - vv.height > 120;
+  const rect = s.input.getBoundingClientRect();
+  const below = vv.offsetTop + vv.height - rect.bottom;
+  if (kb && below < 260 && !s._kbFit) {
+    s._kbFit = true;
+    s.wrap.style.scrollMarginTop = '90px';
+    try { s.wrap.scrollIntoView({ block: 'start' }); } catch (e) {}
+    setTimeout(repositionOpen, 60);
+    setTimeout(repositionOpen, 350);
+  }
+  repositionOpen();
 }
 
 function repositionOpen() {
@@ -15043,6 +15080,10 @@ function closeDropdown() {
   openDropdownId = null;
   window.removeEventListener('scroll', repositionOpen, true);
   window.removeEventListener('resize', repositionOpen);
+  if (window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', ddKeyboardFit);
+    window.visualViewport.removeEventListener('scroll', repositionOpen);
+  }
 }
 
 // ── Dates ────────────────────────────────────────────────────────────
@@ -16124,7 +16165,7 @@ function ihPickerAttach(selId, kind) {
   const btn = document.createElement('div');
   btn.id = selId + '-pick';
   btn.className = 'ih-pick';
-  btn.style.cssText = 'display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:5px;padding:3px 8px;background:#fff;cursor:pointer;min-height:40px;font-size:13px';
+  btn.style.cssText = 'display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:5px;padding:0 8px;background:#fff;cursor:pointer;box-sizing:border-box;height:36px;overflow:hidden;font-size:13px';
   btn.onclick = e => {
     const th = e.target.closest('.ih-pick-th');
     if (th && sel.value && IH_TANK_IMG_KEY[sel.value]) { ihTankZoom(sel.value); return; }
@@ -16137,8 +16178,12 @@ function ihPickerRefresh(selId) {
   const sel = document.getElementById(selId), btn = document.getElementById(selId + '-pick');
   if (!sel || !btn) return;
   const v = sel.value;
-  btn.innerHTML = (v ? '<span class="ih-pick-th" title="Tap to enlarge" style="flex-shrink:0;border-radius:4px;background:#f3f5f9">' + ihTankThumb(v, 30, 36) + '</span>' : '') +
+  btn.innerHTML = (v ? '<span class="ih-pick-th" title="Tap to enlarge" style="flex-shrink:0;border-radius:4px;background:#f3f5f9">' + ihTankThumb(v, 26, 30) + '</span>' : '') +
     '<span style="flex:1;' + (v ? 'font-weight:700' : 'color:#888') + '">' + escapeHtml(v || '\u2014 Select \u2014') + '</span><span style="color:#888">\u25be</span>';
+  // Same height as the Date / Notes fields beside it, so the row stays even.
+  const row = btn.closest('div[style*="grid-template-columns"]');
+  const ref = row && [...row.querySelectorAll('input[type="text"],select')].find(e => e !== sel && e.offsetHeight > 0);
+  if (ref) btn.style.height = ref.offsetHeight + 'px';
 }
 function ihPickerRefreshAll() {
   document.querySelectorAll('select[data-pick]').forEach(s => ihPickerRefresh(s.id));
@@ -16211,10 +16256,30 @@ function ihPadInit() {
       [mo, yr].forEach(s => s.addEventListener('change', () => ihPadCheck(id)));
     }
     ihPadCheck(id);
+    const pm = /^ih-210pad-(\d)$/.exec(id);
+    const lab = mo.parentNode && mo.parentNode.previousElementSibling;
+    if (pm && +pm[1] > 1 && lab && !lab.querySelector('.ih-pad-copy')) {
+      lab.style.cssText += ';display:flex;align-items:center;gap:6px;min-height:22px';
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'ih-pad-copy';
+      b.title = 'Same as PAD ' + (pm[1] - 1);
+      b.textContent = '\u29c9 = PAD ' + (pm[1] - 1);
+      b.style.cssText = 'font-size:11px;padding:2px 8px;border:1px solid #9fb3d1;border-radius:4px;background:#eef3fb;color:#1a3560;cursor:pointer;font-weight:700';
+      b.onclick = () => ihPadCopy(+pm[1]);
+      lab.appendChild(b);
+    }
   });
   const a2 = document.getElementById('ih-a101-2-mo'), a2y = document.getElementById('ih-a101-2-yr');
   const box = a2 && a2.closest('div[style*="min-width"]');
   if (box) box.style.display = (a2.value || (a2y && a2y.value)) ? '' : 'none';
+}
+function ihPadCopy(n) {
+  const g = k => document.getElementById('ih-210pad-' + k + '-mo'), y = k => document.getElementById('ih-210pad-' + k + '-yr');
+  if (!g(n) || !g(n - 1)) return;
+  if (!g(n - 1).value && !y(n - 1).value) { snack('PAD ' + (n - 1) + ' is empty'); return; }
+  g(n).value = g(n - 1).value; y(n).value = y(n - 1).value;
+  [g(n), y(n)].forEach(el => el.dispatchEvent(new Event('change', { bubbles: true })));
+  ihPadCheck('ih-210pad-' + n);
 }
 function ihPadCheck(id) {
   const mo = document.getElementById(id + '-mo'), yr = document.getElementById(id + '-yr');
@@ -16246,7 +16311,13 @@ function ihInspectorDefaults() {
     if (!/^ih-insp-\d+$/.test(div.id)) return;
     const n = div.id.split('-').pop();
     const nm = document.getElementById('ih-insp-' + n + '-name'), dt = document.getElementById('ih-insp-' + n + '-date');
-    if (nm && !nm.value && first) nm.value = first;
+    if (nm && !nm.value && first) {
+      if (![...nm.options].some(o => o.value === first)) {
+        const o = document.createElement('option'); o.value = first; o.textContent = first;
+        nm.insertBefore(o, nm.options[1] || null);
+      }
+      nm.value = first;
+    }
     if (dt && (!dt.value || dt.dataset.auto === '1')) { dt.value = rd; dt.dataset.auto = '1'; }
   });
 }
@@ -16260,6 +16331,24 @@ document.addEventListener('change', e => {
   if (e.target.id === 'f-date') { try { ihInspectorDefaults(); } catch (x) {} }
 }, true);
 setTimeout(() => { try { ihPadInit(); } catch (e) {} }, 1500);
+// External keyboard: Enter in a one-line field moves on to the next field,
+// the same as Tab. Fields with their own Enter action are left alone.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.defaultPrevented || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  const t = e.target;
+  if (!t || t.tagName !== 'INPUT' || t.hasAttribute('onkeydown')) return;
+  if (/^(checkbox|radio|button|submit|file|hidden)$/i.test(t.type)) return;
+  if (t.classList.contains('sd-search')) return;
+  const view = t.closest('[id^="view-"]');
+  if (!view) return;
+  const all = [...view.querySelectorAll('input,select,textarea')].filter(el =>
+    !el.disabled && !el.readOnly && el.offsetParent !== null && el.type !== 'hidden' &&
+    !/^(checkbox|radio|button|submit|file)$/i.test(el.type || ''));
+  const i = all.indexOf(t);
+  if (i < 0 || i === all.length - 1) return;
+  e.preventDefault();
+  try { all[i + 1].focus(); } catch (x) {}
+});
 setTimeout(() => { try { repairDuplicateNumbers(null); } catch (e) {} }, 3000);
 // Sizes set by Copy or Prefill change the hidden list directly; keep the
 // picture next to it in step while the Inhaus page is open.
@@ -16689,7 +16778,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.40';
+  const APP_VER = '4.41';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
