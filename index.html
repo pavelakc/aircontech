@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.41</title>
+<title>AirconTech Field Reports v4.42</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.41</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.42</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -13776,6 +13776,8 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.42', items: [
+    'Part, unit and technician search: text you typed is no longer wiped by a second tap on the field, and the filtered list stays put.' ] },
   { v: '4.41', items: [
     'Search lists stay above the on-screen keyboard.',
     'Inhaus: \u201c\u29c9 = PAD\u201d button copies the PAD date from the one above.',
@@ -14765,7 +14767,7 @@ function createDropdown(opts) {
     <div class="sd-dropdown">
       <div class="sd-search-row">
         <span class="sd-search-icon">🔍</span>
-        <input type="text" class="sd-search" placeholder="Type any character to filter…">
+        <input type="text" class="sd-search" placeholder="Type any character to filter…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       </div>
       <div class="sd-count"></div>
       <div class="sd-list"></div>
@@ -14789,6 +14791,11 @@ function createDropdown(opts) {
   state.setItems = function(newItems) {
     state.items = newItems || [];
     state.filtered = state.items.slice();
+    // The background sync refreshes the lists every minute; an open list
+    // keeps its filter instead of quietly going back to everything.
+    if (openDropdownId === id && state.search) {
+      try { filterDropdown(id, state.search.value || ''); } catch (e) {}
+    }
   };
   dropdownRegistry[id] = state;
   state.wrap = wrap;
@@ -14880,6 +14887,7 @@ function renderList(id) {
       row.style.cssText = 'color:#217a3c;font-weight:700;background:#f2faf4';
       row.textContent = qa === 'part' ? '\uff0b Add \u201c' + q + '\u201d to parts list' : '\uff0b Add unit \u201c' + q + '\u201d';
       row.addEventListener('mousedown', e => { e.preventDefault(); closeDropdown(); quickAddOpen(id, q); });
+      row.addEventListener('click', () => { if (openDropdownId !== id) return; closeDropdown(); quickAddOpen(id, q); });
       s.list.appendChild(row);
     }
     return;
@@ -14914,6 +14922,11 @@ function renderList(id) {
       e.preventDefault();
       const idx = parseInt(el.dataset.idx, 10);
       selectItem(id, slice[idx]);
+    });
+    // iPad: a tap right after scrolling the list may arrive as a click only.
+    el.addEventListener('click', (e) => {
+      if (openDropdownId !== id || e.target.closest('.sd-del')) return;
+      selectItem(id, slice[parseInt(el.dataset.idx, 10)]);
     });
   });
 }
@@ -14970,6 +14983,13 @@ function openDropdown(id) {
   if (openDropdownId && openDropdownId !== id) closeDropdown();
   const s = dropdownRegistry[id];
   if (!s) return;
+  // Already open (a second tap on the field, or focus coming back to it):
+  // keep what was typed instead of wiping the search and the list.
+  if (openDropdownId === id && s.dropdown.style.display !== 'none') {
+    positionDropdown(id);
+    setTimeout(() => { try { s.search.focus(); } catch (e) {} }, 30);
+    return;
+  }
 
   // Move dropdown to body so it's not clipped by parent overflow
   if (s.dropdown.parentNode !== document.body) {
@@ -15015,6 +15035,19 @@ function positionDropdown(id) {
   s.dropdown.style.left = rect.left + 'px';
   s.dropdown.style.width = Math.max(rect.width, 280) + 'px';
 
+  // iPad keyboard open: the list is pinned to the top of what is still
+  // visible, instead of chasing the field while iOS scrolls the page under
+  // the typing. Following the field let the list slide out of sight.
+  if (vv && window.innerHeight - vv.height > 120) {
+    const w = Math.max(rect.width, 320);
+    s.dropdown.style.width = w + 'px';
+    s.dropdown.style.left = Math.max(8, Math.min(rect.left, (vv.offsetLeft || 0) + vv.width - w - 8)) + 'px';
+    s.dropdown.style.bottom = 'auto';
+    s.dropdown.style.top = (visTop + 8) + 'px';
+    s.dropdown.style.maxHeight = Math.max(160, vv.height - 16) + 'px';
+    return;
+  }
+
   if (showAbove) {
     s.dropdown.style.top = 'auto';
     s.dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
@@ -15035,14 +15068,10 @@ function ddKeyboardFit() {
   const kb = window.innerHeight - vv.height > 120;
   const rect = s.input.getBoundingClientRect();
   const below = vv.offsetTop + vv.height - rect.bottom;
-  if (kb && below < 260 && !s._kbFit) {
-    s._kbFit = true;
-    s.wrap.style.scrollMarginTop = '90px';
-    try { s.wrap.scrollIntoView({ block: 'start' }); } catch (e) {}
-    setTimeout(repositionOpen, 60);
-    setTimeout(repositionOpen, 350);
-  }
+  // The list pins itself above the keyboard (positionDropdown); no page
+  // scrolling here, which only gave iOS another reason to move things.
   repositionOpen();
+  setTimeout(repositionOpen, 120);
 }
 
 function repositionOpen() {
@@ -16778,7 +16807,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.41';
+  const APP_VER = '4.42';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
