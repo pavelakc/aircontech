@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.45</title>
+<title>AirconTech Field Reports v4.46</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.45</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.46</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -10288,18 +10288,46 @@ async function _iosPdfPageFrames(win, bytes, label) {
     '#bar{position:sticky;top:0;z-index:5;background:#1a3560;color:#fff;display:flex;align-items:center;' +
     'gap:12px;flex-wrap:wrap;padding:10px 14px 10px 100px}' +
     '.pg{display:block;width:min(96vw,900px);aspect-ratio:8.5/11;margin:14px auto;border:0;background:#fff;' +
-    'box-shadow:0 2px 10px rgba(0,0,0,.4)}</style></head><body>' +
+    'box-shadow:0 2px 10px rgba(0,0,0,.4)}' +
+    '.pp{margin:14px auto;width:min(96vw,900px)}' +
+    '.pp img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}' +
+    '@page{size:letter portrait;margin:0}' +
+    '@media print{#bar,.pg{display:none}body{background:#fff}' +
+    '.pp{margin:0;width:auto;height:100vh;display:flex;align-items:center;justify-content:center;' +
+    'page-break-after:always;break-after:page}.pp:last-child{page-break-after:auto;break-after:auto}' +
+    '.pp img{width:auto;height:auto;max-width:100%;max-height:100%;box-shadow:none}}' +
+    '</style></head><body>' +
     '<div id="bar">' +
     '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="' + btn + ';background:#fff;color:#1a3560">&#8592; Back</button>' +
     '<button id="prt" onclick="doPrint()" style="' + btn + ';background:#f0a800;color:#1a3560">&#128424; Print</button>' +
     '<a href="' + url + '" style="color:#fff;font-size:14px;margin-left:auto">Open full PDF</a>' +
     '<span style="font-size:13px;opacity:.8">' + pageUrls.length + ' page(s)</span></div>' +
     pageUrls.map(u => '<iframe class="pg" src="' + u + '"></iframe>').join('') +
-    '<script>var F=null;fetch(' + JSON.stringify(url) + ').then(function(r){return r.blob()}).then(function(b){' +
+    '<script>var U=' + JSON.stringify(url) + ',B=' + JSON.stringify(PDFJS_BASE) + ',F=null,IMG=false;' +
+    'fetch(U).then(function(r){return r.blob()}).then(function(b){' +
     'F=new File([b],' + JSON.stringify(fname) + ',{type:"application/pdf"})});' +
-    'function doPrint(){try{if(F&&navigator.canShare&&navigator.canShare({files:[F]})){' +
-    'navigator.share({files:[F]}).catch(function(){});return}}catch(e){}' +
-    'location.href=' + JSON.stringify(url) + '}<\/script></body></html>');
+    // Ready pictures: the ordinary print dialog. Not ready (yet): share sheet.
+    'function doPrint(){if(IMG){window.print();return}' +
+    'try{if(F&&navigator.canShare&&navigator.canShare({files:[F]})){' +
+    'navigator.share({files:[F]}).catch(function(){});return}}catch(e){}location.href=U}' +
+    // The pages are turned into pictures here, in this window: the app tab is
+    // paused by the iPad while this window is in front.
+    // No background worker: with pdf.worker loaded as a plain script, pdf.js
+    // runs in this window. A worker started from here hung on the iPad.
+    'async function toImages(){var L=window.pdfjsLib;if(!L||!window.pdfjsWorker)return;' +
+    'L.GlobalWorkerOptions.workerSrc=B+"pdf.worker.min.js";' +
+    'var pdf=await L.getDocument({data:new Uint8Array(await (await fetch(U)).arrayBuffer())}).promise;' +
+    'var box=document.createElement("div");box.id="imgs";' +
+    'for(var i=1;i<=pdf.numPages;i++){var pg=await pdf.getPage(i),vp=pg.getViewport({scale:2.5}),' +
+    'c=document.createElement("canvas");c.width=Math.round(vp.width);c.height=Math.round(vp.height);' +
+    'var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);' +
+    'await pg.render({canvasContext:x,viewport:vp}).promise;' +
+    'var d=document.createElement("div");d.className="pp";var im=new Image();im.src=c.toDataURL("image/jpeg",0.92);' +
+    'd.appendChild(im);box.appendChild(d);c.width=c.height=0}' +
+    'document.querySelectorAll(".pg").forEach(function(f){f.remove()});document.body.appendChild(box);IMG=true}' +
+    'function ld(f,cb){var s=document.createElement("script");s.src=B+f;s.onload=cb;document.head.appendChild(s)}' +
+    'ld("pdf.min.js",function(){ld("pdf.worker.min.js",function(){toImages().catch(function(e){console.warn(e)})})});' +
+    '<\/script></body></html>');
   win.document.close();
 }
 
@@ -10307,92 +10335,10 @@ async function _iosPdfPageFrames(win, bytes, label) {
 // picture, so the page can be shown at its real proportions and printed with
 // the normal print dialog straight away.
 var PDFJS_BASE = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
-var _pdfjsLoading = null;
-function _loadPdfJs() {
-  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-  if (_pdfjsLoading) return _pdfjsLoading;
-  _pdfjsLoading = new Promise((res, rej) => {
-    const sc = document.createElement('script');
-    sc.src = PDFJS_BASE + 'pdf.min.js';
-    sc.onload = async () => {
-      if (!window.pdfjsLib) { _pdfjsLoading = null; return rej(new Error('pdf.js missing')); }
-      // Safari will not start a worker from another site; the worker code is
-      // fetched and started from a local blob address instead.
-      try {
-        const t = await _withTimeout(fetch(PDFJS_BASE + 'pdf.worker.min.js').then(r => r.text()), 10000);
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
-      } catch (e) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js';
-      }
-      res(window.pdfjsLib);
-    };
-    sc.onerror = () => { _pdfjsLoading = null; rej(new Error('pdf.js not loaded')); };
-    document.head.appendChild(sc);
-  });
-  return _pdfjsLoading;
-}
 
-function _withTimeout(p, ms) {
-  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
-}
-
-async function _pdfToImages(bytes) {
-  const lib = await _loadPdfJs();
-  const pdf = await lib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
-  const out = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const vp = page.getViewport({ scale: 2.5 });
-    const c = document.createElement('canvas');
-    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-    out.push({ src: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height });
-    c.width = c.height = 0;   // iPad keeps canvas memory until it is released
-  }
-  return out;
-}
-
-// iPad: pages shown as pictures under Back / Print. Print opens the normal
-// print dialog (window.print), one sheet per page. If pdf.js cannot load
-// (no signal), the older frame view with the share sheet is used instead.
 async function _iosPdfPage(win, bytes, label) {
-  let imgs = null;
-  // Never leave the window on "Preparing…": after 15 s the plain view is used.
-  try { imgs = await _withTimeout(_pdfToImages(bytes), 15000); } catch (e) { console.warn('pdf.js:', e); }
-  if (!imgs || !imgs.length) {
-    try { return await _iosPdfPageFrames(win, bytes, label); }
-    catch (e) { win.location.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); return; }
-  }
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  const btn = 'border:none;border-radius:8px;padding:12px 22px;font-size:16px;font-weight:700;' +
-    'cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
-  win.document.open();
-  win.document.write(
-    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>' + escapeHtml(label) + '</title><style>' +
-    'body{margin:0;background:#5b6475;font-family:Arial,Helvetica,sans-serif}' +
-    '#bar{position:sticky;top:0;z-index:5;background:#1a3560;color:#fff;display:flex;align-items:center;' +
-    'gap:12px;flex-wrap:wrap;padding:10px 14px 10px 100px}' +
-    '.pp{margin:14px auto;width:min(96vw,900px)}' +
-    '.pp img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}' +
-    '@page{size:letter portrait;margin:0}' +
-    '@media print{#bar{display:none}body{background:#fff}' +
-    '.pp{margin:0;width:auto;height:100vh;display:flex;align-items:center;justify-content:center;' +
-    'page-break-after:always;break-after:page}.pp:last-child{page-break-after:auto;break-after:auto}' +
-    '.pp img{width:auto;height:auto;max-width:100%;max-height:100%;box-shadow:none}}' +
-    '</style></head><body>' +
-    '<div id="bar">' +
-    '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="' + btn + ';background:#fff;color:#1a3560">&#8592; Back</button>' +
-    '<button onclick="window.print()" style="' + btn + ';background:#f0a800;color:#1a3560">&#128424; Print</button>' +
-    '<a href="' + url + '" style="color:#fff;font-size:14px;margin-left:auto">Open PDF</a>' +
-    '<span style="font-size:13px;opacity:.8">' + imgs.length + ' page(s)</span></div>' +
-    imgs.map(im => '<div class="pp"><img src="' + im.src + '" width="' + im.w + '" height="' + im.h + '"></div>').join('') +
-    '</body></html>');
-  win.document.close();
+  // Opens at once; the window itself upgrades the pages to printable pictures.
+  return _iosPdfPageFrames(win, bytes, label);
 }
 
 function _showPdfInWindow(win, bytes, label, pages) {
@@ -16932,7 +16878,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.45';
+  const APP_VER = '4.46';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
