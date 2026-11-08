@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.44</title>
+<title>AirconTech Field Reports v4.45</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.44</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.45</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -10314,14 +10314,27 @@ function _loadPdfJs() {
   _pdfjsLoading = new Promise((res, rej) => {
     const sc = document.createElement('script');
     sc.src = PDFJS_BASE + 'pdf.min.js';
-    sc.onload = () => {
-      try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js'; } catch (e) {}
-      window.pdfjsLib ? res(window.pdfjsLib) : rej(new Error('pdf.js missing'));
+    sc.onload = async () => {
+      if (!window.pdfjsLib) { _pdfjsLoading = null; return rej(new Error('pdf.js missing')); }
+      // Safari will not start a worker from another site; the worker code is
+      // fetched and started from a local blob address instead.
+      try {
+        const t = await _withTimeout(fetch(PDFJS_BASE + 'pdf.worker.min.js').then(r => r.text()), 10000);
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
+      } catch (e) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js';
+      }
+      res(window.pdfjsLib);
     };
     sc.onerror = () => { _pdfjsLoading = null; rej(new Error('pdf.js not loaded')); };
     document.head.appendChild(sc);
   });
   return _pdfjsLoading;
+}
+
+function _withTimeout(p, ms) {
+  return Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 }
 
 async function _pdfToImages(bytes) {
@@ -10337,6 +10350,7 @@ async function _pdfToImages(bytes) {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     out.push({ src: c.toDataURL('image/jpeg', 0.92), w: c.width, h: c.height });
+    c.width = c.height = 0;   // iPad keeps canvas memory until it is released
   }
   return out;
 }
@@ -10346,8 +10360,12 @@ async function _pdfToImages(bytes) {
 // (no signal), the older frame view with the share sheet is used instead.
 async function _iosPdfPage(win, bytes, label) {
   let imgs = null;
-  try { imgs = await _pdfToImages(bytes); } catch (e) { console.warn('pdf.js:', e); }
-  if (!imgs || !imgs.length) return _iosPdfPageFrames(win, bytes, label);
+  // Never leave the window on "Preparing…": after 15 s the plain view is used.
+  try { imgs = await _withTimeout(_pdfToImages(bytes), 15000); } catch (e) { console.warn('pdf.js:', e); }
+  if (!imgs || !imgs.length) {
+    try { return await _iosPdfPageFrames(win, bytes, label); }
+    catch (e) { win.location.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' })); return; }
+  }
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
   const btn = 'border:none;border-radius:8px;padding:12px 22px;font-size:16px;font-weight:700;' +
     'cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
@@ -10415,7 +10433,8 @@ async function printTimeCardsPdf() {
     if (win) {
       win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Time Card</title></head>' +
         '<body style="font-family:Arial,Helvetica,sans-serif;display:flex;align-items:center;' +
-        'justify-content:center;height:100vh;margin:0;color:#1a3560">Preparing time card…</body></html>');
+        'justify-content:center;height:100vh;margin:0;color:#1a3560"><div style="text-align:center">Preparing time card…<br>' +
+        '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="margin-top:22px;background:#1a3560;color:#fff;border:none;border-radius:8px;padding:12px 26px;font-size:16px;font-weight:700">&#8592; Back</button></div></body></html>');
       win.document.close();
     }
   } catch (e) { win = null; }
@@ -10451,7 +10470,8 @@ async function printAllShiftReports() {
         'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1a3560">' +
         '<div style="text-align:center"><div style="font-size:18px;font-weight:700">' +
         'Preparing shift package\u2026</div><div style="font-size:13px;color:#777;margin-top:6px">' +
-        'This window will fill in when the PDF is ready.</div></div></body></html>');
+        'This window will fill in when the PDF is ready.</div>' +
+        '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="margin-top:22px;background:#1a3560;color:#fff;border:none;border-radius:8px;padding:12px 26px;font-size:16px;font-weight:700">&#8592; Back</button></div></body></html>');
       win.document.close();
     }
   } catch (e) { win = null; }
@@ -13913,58 +13933,20 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
-  { v: '4.44', items: [
-    'iPad: Print opens the print dialog straight away; pages are shown at their real size.' ] },
-  { v: '4.43', items: [
-    'Job Status fills Work Remaining with \u201cCOMPLETED\u201d or \u201cNOT COMPLETED\u201d. You can edit it; text you wrote yourself is never replaced.',
-    'iPad: Time Card and shift package open with Back and \uD83D\uDDA8 Print buttons.' ] },
-  { v: '4.42', items: [
-    'Part, unit and technician search: text you typed is no longer wiped by a second tap on the field, and the filtered list stays put.' ] },
-  { v: '4.41', items: [
-    'Search lists stay above the on-screen keyboard.',
-    'Inhaus: \u201c\u29c9 = PAD\u201d button copies the PAD date from the one above.',
-    'Inhaus: technician name filled in automatically; tank size field same height as the others.',
-    'Print view: bigger Back / Print buttons, clear of the iPad window buttons.',
-    'External keyboard: Enter moves to the next field.' ] },
-  { v: '4.39', items: [
-    'Inhaus: tank sizes with pictures \u2014 tap a picture to enlarge it. 8.5 and 17 lb removed.',
-    'PAD dates: months as numbers, recent years only, an expired PAD shows in red. A101 has one PAD date.',
-    'Inspected By: the date is filled from the report.' ] },
-  { v: '4.35', items: [
-    'Contact: names you type are added to the list on every device; \u2715 next to a name removes it.',
-    'C4: \u201cPaperwork\u201d added.' ] },
-  { v: '4.34', items: [
-    'Time Card: \u201cOvertime \u2014 whole shift\u201d and \u201cSTAT holiday\u201d for each technician, filled in from the field reports.',
-    'STAT holidays: reminder in the Field Report; hours in Regular and Overtime with a big STAT mark on the time card.' ] },
-  { v: '4.33', items: [
-    'Switching templates replaces the previous template\u2019s parts and C4 ticks instead of adding to them. What you added yourself stays.',
-    'Database \u2192 Technicians: name and badge number in separate boxes; badge problems are highlighted.',
-    'Supervisor: one person is counted once, even if the name was typed differently on some reports.' ] },
-  { v: '4.32', items: [
-    'Templates: only yours are listed; tick \u201cShow others\u2019 & old\u201d to see the rest.',
-    'Used someone else\u2019s or an old template? \u2b50 Keep as mine under the list \u2014 no more pop-up.' ] },
-  { v: '4.31', items: [
-    'New technician? \u201c\uff0b I\u2019m new\u201d on the sign-in screen: name and badge number, and you are in.',
-    'Part or unit not in the list? \u201c\uff0b Add\u201d appears right in the search list.',
-    '\u201c?\u201d is now a help mode: point at (or tap) anything to see what it does.' ] },
-  { v: '4.30', items: [
-    '\u2728 What\u2019s new in the menu (or tap the version number): every update, newest first.' ] },
-  { v: '4.29', items: [
-    'Templates and part sets: yours are listed first; tick \u201cShow others\u2019\u201d to see everyone else\u2019s.',
-    'Old templates without an author: after applying one you can save a copy as your own.' ] },
-  { v: '4.28', items: [
-    'Inhaus print view: \u2190 Back button at the top to return to the app.' ] },
-  { v: '4.27', items: [
-    'Supervisor: reports found by part or unit open with \ud83d\udc41 View; the row shows the part and quantity used.' ] },
-  { v: '4.26', items: [
-    'A short \u201cWhat\u2019s new\u201d message is shown once after an update.' ] },
-  { v: '4.25', items: [
-    'Supervisor: search reports by part number, part description or unit.',
-    'Shift change (06:00\u201308:00, 18:00\u201320:00): choose Day or Night when signing in.' ] },
-  { v: '4.23', items: [
-    'The shift chosen at sign-in is used for all your reports that shift.' ] },
-  { v: '4.21', items: [
-    'C3 full? Tips appear, and text typed in CAPITALS can be converted to normal case in one tap.' ] },
+  { v: '4.44', from: '4.39', items: [
+    'Inhaus: tank pictures, PAD dates as numbers (expired in red), \u201c\u29c9 = PAD\u201d copy, inspector filled in.',
+    'Search lists stay above the keyboard and keep what you typed.',
+    'Work Remaining: COMPLETED / NOT COMPLETED from Job Status.',
+    'iPad: Back and Print buttons; Print opens the print dialog.' ] },
+  { v: '4.35', from: '4.30', items: [
+    '\u201c?\u201d help mode, \u201c\uff0b I\u2019m new\u201d at sign-in, \u201c\uff0b Add\u201d for a missing part or unit.',
+    'Templates: only yours are listed; switching one replaces its parts and C4.',
+    'Time Card: Overtime for the whole shift and STAT holiday (double pay).',
+    'Contacts shared on every device; C4 \u201cPaperwork\u201d.' ] },
+  { v: '4.29', from: '4.21', items: [
+    'Supervisor: find reports by part or unit and open them.',
+    'Shift chosen at sign-in is used for all your reports.',
+    'C3 tips and one-tap CAPITALS fix.' ] },
 ];
 
 function verNum(v) {
@@ -13976,6 +13958,7 @@ function showWhatsNew() {
   if (!from) return;
   const cur = (document.getElementById('app-ver-badge')?.textContent || '').replace(/^v/, '');
   // Only the changes of the version being opened, even if versions were skipped.
+  // Small fixes get no entry and so no pop-up; a release entry shows once.
   const list = WHATS_NEW.filter(e => e.v === cur && verNum(e.v) > verNum(from));
   if (!list.length) { localStorage.removeItem('aircon_whatsnew_from'); return; }
   document.getElementById('whats-new')?.remove();
@@ -14011,8 +13994,8 @@ function showWhatsNewHistory() {
       '<div style="font-size:18px;font-weight:800;color:#1a3560;margin-bottom:2px">\u2728 What\u2019s new</div>' +
       '<div style="font-size:12px;color:#888;margin-bottom:8px">You have v' + escapeHtml(cur) + '. Newest first.</div>' +
       WHATS_NEW.filter(e => !cur || verNum(e.v) <= verNum(cur)).map(e =>
-        '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;color:' + (e.v === cur ? '#217a3c' : '#b35400') + '">v' +
-          escapeHtml(e.v) + (e.v === cur ? ' \u00b7 current' : '') + '</div>' +
+        '<div style="margin:10px 0 4px;font-size:11px;font-weight:700;color:#b35400">' +
+          (e.from ? 'v' + escapeHtml(e.from) + '\u2013' : 'v') + escapeHtml(e.v) + '</div>' +
         e.items.map(t => '<div style="margin:3px 0 3px 4px;line-height:1.4">\u2022 ' + escapeHtml(t) + '</div>').join('')).join('') +
       '<button type="button" onclick="document.getElementById(\'whats-new\').remove()" style="margin-top:14px;width:100%;background:#1a3560;color:#fff;' +
         'border:none;border-radius:8px;padding:11px;font-size:15px;font-weight:700;cursor:pointer">Close</button>' +
@@ -16949,7 +16932,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.44';
+  const APP_VER = '4.45';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
