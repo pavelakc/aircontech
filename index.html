@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.42</title>
+<title>AirconTech Field Reports v4.43</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.42</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.43</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -1406,8 +1406,8 @@
           <div class="form-group">
             <label>Job Status<span class="req-mark">*</span></label>
             <div class="status-row" style="margin-top:6px">
-              <button class="status-btn" id="btn-completed" onclick="setStatus('completed')">✓ Completed</button>
-              <button class="status-btn" id="btn-incomplete" onclick="setStatus('incomplete')">⏳ Incomplete</button>
+              <button class="status-btn" id="btn-completed" onclick="setStatus('completed');wrStatusText('completed')">✓ Completed</button>
+              <button class="status-btn" id="btn-incomplete" onclick="setStatus('incomplete');wrStatusText('incomplete')">⏳ Incomplete</button>
             </div>
           </div>
           <div class="form-group">
@@ -7284,6 +7284,23 @@ function setStatus(s) {
   if (s === 'incomplete' && bi) bi.classList.add('selected-incomplete');
 }
 
+// Job Status fills Work Remaining with COMPLETED / NOT COMPLETED. Only an
+// empty box or the other automatic word is replaced, so anything the
+// technician wrote stays, and the word itself can be edited freely.
+var WR_STATUS_TEXT = { completed: 'COMPLETED', incomplete: 'NOT COMPLETED' };
+function wrStatusText(s) {
+  const el = document.getElementById('f-remaining');
+  const txt = WR_STATUS_TEXT[s];
+  if (!el || !txt) return;
+  const cur = (el.value || '').trim().toUpperCase();
+  const autos = Object.values(WR_STATUS_TEXT);
+  if (cur && !autos.includes(cur)) return;
+  if (cur === txt) return;
+  el.value = txt;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 function setType(t) {
   jobType = t;
   // The prefix (FS / HV / XX) comes from here, so the number has to follow.
@@ -10237,11 +10254,58 @@ async function _drawTimeCardPage(pdfDoc, m) {
 // Shows a finished PDF in the window that was opened during the click.
 // iPadOS cannot show more than the first page of a PDF inside a frame, so it
 // gets the file directly in its own viewer.
+function _isIOSDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+// iPad: the PDF viewer has no print button of its own, only Share. This page
+// shows every page (one single-page PDF per frame, since WebKit draws only the
+// first page of a framed PDF) under a bar with Back / Print / Open PDF.
+// Print opens the share sheet with the file, where Print is the first choice.
+async function _iosPdfPage(win, bytes, label) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  let pageUrls = [];
+  try {
+    const src = await PDFLib.PDFDocument.load(bytes);
+    for (let i = 0; i < src.getPageCount(); i++) {
+      const one = await PDFLib.PDFDocument.create();
+      const [pg] = await one.copyPages(src, [i]);
+      one.addPage(pg);
+      pageUrls.push(URL.createObjectURL(new Blob([await one.save()], { type: 'application/pdf' })));
+    }
+  } catch (e) { pageUrls = []; }
+  if (!pageUrls.length) { win.location.href = url; return; }
+  const fname = (label.replace(/[^\w\-]+/g, '_') || 'report') + '.pdf';
+  const btn = 'border:none;border-radius:8px;padding:12px 22px;font-size:16px;font-weight:700;' +
+    'cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+  win.document.open();
+  win.document.write(
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>' + escapeHtml(label) + '</title><style>' +
+    'body{margin:0;background:#5b6475;font-family:Arial,Helvetica,sans-serif}' +
+    '#bar{position:sticky;top:0;z-index:5;background:#1a3560;color:#fff;display:flex;align-items:center;' +
+    'gap:12px;flex-wrap:wrap;padding:10px 14px 10px 100px}' +
+    '.pg{display:block;width:min(96vw,900px);aspect-ratio:8.5/11;margin:14px auto;border:0;background:#fff;' +
+    'box-shadow:0 2px 10px rgba(0,0,0,.4)}</style></head><body>' +
+    '<div id="bar">' +
+    '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="' + btn + ';background:#fff;color:#1a3560">&#8592; Back</button>' +
+    '<button id="prt" onclick="doPrint()" style="' + btn + ';background:#f0a800;color:#1a3560">&#128424; Print</button>' +
+    '<a href="' + url + '" style="color:#fff;font-size:14px;margin-left:auto">Open full PDF</a>' +
+    '<span style="font-size:13px;opacity:.8">' + pageUrls.length + ' page(s)</span></div>' +
+    pageUrls.map(u => '<iframe class="pg" src="' + u + '"></iframe>').join('') +
+    '<script>var F=null;fetch(' + JSON.stringify(url) + ').then(function(r){return r.blob()}).then(function(b){' +
+    'F=new File([b],' + JSON.stringify(fname) + ',{type:"application/pdf"})});' +
+    'function doPrint(){try{if(F&&navigator.canShare&&navigator.canShare({files:[F]})){' +
+    'navigator.share({files:[F]}).catch(function(){});return}}catch(e){}' +
+    'location.href=' + JSON.stringify(url) + '}<\/script></body></html>');
+  win.document.close();
+}
+
 function _showPdfInWindow(win, bytes, label, pages) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  if (isIOS) { win.location.href = url; return; }
+  if (_isIOSDevice()) { _iosPdfPage(win, bytes, label); return; }
   win.document.open();
   win.document.write(
     '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + escapeHtml(label) + '</title>' +
@@ -10446,10 +10510,9 @@ async function printAllShiftReports() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (isIOS) {
-      // Hand the file to the built-in viewer: every page scrolls there, and it
-      // carries its own share and print controls.
-      win.location.href = url;
-      snack('\u2714 ' + merged.getPageCount() + ' page(s) \u2014 use Share to print');
+      // Every page shown, with a Print button that opens the share sheet.
+      await _iosPdfPage(win, bytes, label);
+      snack('\u2714 ' + merged.getPageCount() + ' page(s)');
       if (skippedReports.length) {
         saveConfirm('Package incomplete', skippedReports.length +
           ' report(s) could not be rendered: ' + skippedReports.join(', '), true);
@@ -13776,6 +13839,9 @@ function loginAs(role) {
 // Full history, newest first. The one-time popup shows only the entry for the
 // version being opened; the "What's new" item in the menu shows all of them.
 var WHATS_NEW = [
+  { v: '4.43', items: [
+    'Job Status fills Work Remaining with \u201cCOMPLETED\u201d or \u201cNOT COMPLETED\u201d. You can edit it; text you wrote yourself is never replaced.',
+    'iPad: Time Card and shift package open with Back and \uD83D\uDDA8 Print buttons.' ] },
   { v: '4.42', items: [
     'Part, unit and technician search: text you typed is no longer wiped by a second tap on the field, and the filtered list stays put.' ] },
   { v: '4.41', items: [
@@ -16807,7 +16873,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.42';
+  const APP_VER = '4.43';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
