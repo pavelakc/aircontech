@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.46</title>
+<title>AirconTech Field Reports v4.47</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.46</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.47</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -10306,27 +10306,38 @@ async function _iosPdfPageFrames(win, bytes, label) {
     '<script>var U=' + JSON.stringify(url) + ',B=' + JSON.stringify(PDFJS_BASE) + ',F=null,IMG=false;' +
     'fetch(U).then(function(r){return r.blob()}).then(function(b){' +
     'F=new File([b],' + JSON.stringify(fname) + ',{type:"application/pdf"})});' +
-    // Ready pictures: the ordinary print dialog. Not ready (yet): share sheet.
-    'function doPrint(){if(IMG){window.print();return}' +
-    'try{if(F&&navigator.canShare&&navigator.canShare({files:[F]})){' +
+    // Print button states: preparing -> ready (print dialog) or failed (share).
+    // A tap while preparing waits and prints as soon as the pages are ready.
+    'var ST="prep",WANT=false,P=document.getElementById("prt");' +
+    'function lab(){P.innerHTML=ST=="prep"?(WANT?"&#9203; Printing when ready\u2026":"&#9203; Preparing\u2026"):"&#128424; Print";' +
+    'P.style.opacity=ST=="prep"?".75":"1"}lab();' +
+    'function share(){try{if(F&&navigator.canShare&&navigator.canShare({files:[F]})){' +
     'navigator.share({files:[F]}).catch(function(){});return}}catch(e){}location.href=U}' +
-    // The pages are turned into pictures here, in this window: the app tab is
-    // paused by the iPad while this window is in front.
-    // No background worker: with pdf.worker loaded as a plain script, pdf.js
-    // runs in this window. A worker started from here hung on the iPad.
-    'async function toImages(){var L=window.pdfjsLib;if(!L||!window.pdfjsWorker)return;' +
+    'function doPrint(){if(ST=="ready"){window.print();return}if(ST=="fail"){share();return}WANT=true;lab()}' +
+    'function done(ok){ST=ok?"ready":"fail";lab();if(WANT){WANT=false;if(ok)setTimeout(function(){window.print()},50);else share()}}' +
+    // The pages are turned into pictures here, in this window (the app tab is
+    // paused by the iPad while this window is in front), and without a
+    // background worker, which hung on the iPad. Pictures are kept as blobs,
+    // not text, to spare the iPad's memory on long shift packages.
+    'async function toImages(scale){var L=window.pdfjsLib;if(!L||!window.pdfjsWorker)throw new Error("no pdf.js");' +
     'L.GlobalWorkerOptions.workerSrc=B+"pdf.worker.min.js";' +
     'var pdf=await L.getDocument({data:new Uint8Array(await (await fetch(U)).arrayBuffer())}).promise;' +
     'var box=document.createElement("div");box.id="imgs";' +
-    'for(var i=1;i<=pdf.numPages;i++){var pg=await pdf.getPage(i),vp=pg.getViewport({scale:2.5}),' +
+    'for(var i=1;i<=pdf.numPages;i++){var pg=await pdf.getPage(i),vp=pg.getViewport({scale:scale}),' +
     'c=document.createElement("canvas");c.width=Math.round(vp.width);c.height=Math.round(vp.height);' +
     'var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);' +
     'await pg.render({canvasContext:x,viewport:vp}).promise;' +
-    'var d=document.createElement("div");d.className="pp";var im=new Image();im.src=c.toDataURL("image/jpeg",0.92);' +
-    'd.appendChild(im);box.appendChild(d);c.width=c.height=0}' +
-    'document.querySelectorAll(".pg").forEach(function(f){f.remove()});document.body.appendChild(box);IMG=true}' +
-    'function ld(f,cb){var s=document.createElement("script");s.src=B+f;s.onload=cb;document.head.appendChild(s)}' +
-    'ld("pdf.min.js",function(){ld("pdf.worker.min.js",function(){toImages().catch(function(e){console.warn(e)})})});' +
+    'var bl=await new Promise(function(r){c.toBlob(r,"image/jpeg",0.9)});c.width=c.height=0;pg.cleanup();' +
+    'if(!bl)throw new Error("canvas");' +
+    'var d=document.createElement("div");d.className="pp";var im=new Image();im.src=URL.createObjectURL(bl);' +
+    'try{await im.decode()}catch(e){}d.appendChild(im);box.appendChild(d)}' +
+    'pdf.destroy();document.querySelectorAll(".pg").forEach(function(f){f.remove()});' +
+    'document.getElementById("imgs")&&document.getElementById("imgs").remove();document.body.appendChild(box)}' +
+    'async function run(){try{await toImages(2)}catch(e){console.warn(e);' +
+    'try{await toImages(1.4)}catch(e2){console.warn(e2);return done(false)}}done(true)}' +
+    'function ld(f,cb){var s=document.createElement("script");s.src=B+f;s.onload=cb;' +
+    's.onerror=function(){done(false)};document.head.appendChild(s)}' +
+    'ld("pdf.min.js",function(){ld("pdf.worker.min.js",run)});' +
     '<\/script></body></html>');
   win.document.close();
 }
@@ -16878,7 +16889,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.46';
+  const APP_VER = '4.47';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
