@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.50</title>
+<title>AirconTech Field Reports v4.51</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.50</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.51</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -13931,8 +13931,7 @@ var WHATS_NEW = [
   { v: '4.44', from: '4.39', items: [
     'Inhaus: tank pictures, PAD dates as numbers (expired in red), \u201c\u29c9 = PAD\u201d copy, inspector filled in.',
     'Search lists stay above the keyboard and keep what you typed.',
-    'Work Remaining: COMPLETED / NOT COMPLETED from Job Status.',
-    'iPad: Back and Print buttons; Print opens the print dialog.' ] },
+    'Work Remaining: COMPLETED / NOT COMPLETED from Job Status.' ] },
   { v: '4.35', from: '4.30', items: [
     '\u201c?\u201d help mode, \u201c\uff0b I\u2019m new\u201d at sign-in, \u201c\uff0b Add\u201d for a missing part or unit.',
     'Templates: only yours are listed; switching one replaces its parts and C4.',
@@ -16927,7 +16926,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.50';
+  const APP_VER = '4.51';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
