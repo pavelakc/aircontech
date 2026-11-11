@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.51</title>
+<title>AirconTech Field Reports v4.52</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.51</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.52</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -8643,7 +8643,7 @@ function renderTimeCardRows() {
       <td class="col-hours" id="tc-reg-${idx}" style="text-align:center">—</td>
       <td class="col-hours" style="text-align:center">
         <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-          <input type="checkbox" ${r.ot?'checked':''} onchange="setTcField(${idx},'ot',this.checked)" title="OT: check for overtime (can combine with REG for double pay)" style="margin:0">
+          <input type="checkbox" ${r.ot?'checked':''} onchange="setTcField(${idx},'ot',this.checked)" title="OT: check for overtime" style="margin:0">
           <span id="tc-ot-${idx}" style="font-size:11px;color:#b35400;font-weight:700"></span>
         </div>
       </td>
@@ -9071,7 +9071,7 @@ function frHolidayApply() {
   const ban = document.getElementById('fr-holiday');
   if (ban) {
     ban.style.display = h ? '' : 'none';
-    ban.innerHTML = h ? '\ud83c\udf89 <b>' + escapeHtml(h) + '</b> \u2014 STAT holiday. STAT is ticked for the technicians below (Regular + Overtime, double pay); untick it if it does not apply.' : '';
+    ban.innerHTML = h ? '\ud83c\udf89 <b>' + escapeHtml(h) + '</b> \u2014 STAT holiday. STAT is ticked for the technicians below; untick it if it does not apply.' : '';
   }
   (typeof techRows !== 'undefined' ? techRows : []).forEach(id => {
     const cb = document.getElementById('stat-' + id);
@@ -9155,7 +9155,7 @@ function tcRefreshFlags() {
     const st = res.filter(f => f.stat), ot = res.filter(f => f.ot && !f.stat);
     if (st.length) lines.push('<div style="margin:8px 0 0;padding:8px 12px;background:#fde8f3;border-left:4px solid #b0006a;border-radius:6px;font-size:13px;color:#7a004a">' +
       '\ud83c\udf89 <b>' + escapeHtml(st[0].statName || 'STAT') + ' \u2014 STAT holiday</b> for ' + escapeHtml(st.map(f => f.name).join(', ')) +
-      ': hours in Regular <b>and</b> Overtime (double pay).</div>');
+      ': hours in Regular <b>and</b> Overtime.</div>');
     if (ot.length) lines.push('<div style="margin:8px 0 0;padding:8px 12px;background:#fff1e0;border-left:4px solid #e67e22;border-radius:6px;font-size:13px;color:#8a3d00">' +
       '\u23f1 <b>' + escapeHtml(ot.map(f => f.name).join(', ')) + '</b> \u2014 all hours as <b>Overtime</b> on ' + (ot.length > 1 ? 'their' : 'the') + ' time card.</div>');
     note.innerHTML = lines.join('');
@@ -10259,10 +10259,14 @@ async function _drawTimeCardPage(pdfDoc, m) {
     const W = 340, H = 80, bx = (612 - W) / 2, by = 792 * 0.40;
     page.drawRectangle({ x: bx, y: by, width: W, height: H, borderColor: PINK, borderWidth: 4,
                          color: hex('#fff0f7'), opacity: 0.94 });
+    // Holiday name under the title when known; no pay wording on the card.
+    const named = m.stat !== 'STAT';
     const t1 = 'STAT HOLIDAY', s1 = 34;
-    page.drawText(t1, { x: bx + (W - FB.widthOfTextAtSize(t1, s1)) / 2, y: by + 36, size: s1, font: FB, color: PINK });
-    const t2 = fit((m.stat !== 'STAT' ? m.stat + '  \u00b7  ' : '') + 'DOUBLE PAY', FB, 12, W - 20);
-    page.drawText(t2, { x: bx + (W - FB.widthOfTextAtSize(t2, 12)) / 2, y: by + 15, size: 12, font: FB, color: PINK });
+    page.drawText(t1, { x: bx + (W - FB.widthOfTextAtSize(t1, s1)) / 2, y: by + (named ? 36 : 28), size: s1, font: FB, color: PINK });
+    if (named) {
+      const t2 = fit(m.stat, FB, 12, W - 20);
+      page.drawText(t2, { x: bx + (W - FB.widthOfTextAtSize(t2, 12)) / 2, y: by + 15, size: 12, font: FB, color: PINK });
+    }
   }
   return page;
 }
@@ -13935,7 +13939,7 @@ var WHATS_NEW = [
   { v: '4.35', from: '4.30', items: [
     '\u201c?\u201d help mode, \u201c\uff0b I\u2019m new\u201d at sign-in, \u201c\uff0b Add\u201d for a missing part or unit.',
     'Templates: only yours are listed; switching one replaces its parts and C4.',
-    'Time Card: Overtime for the whole shift and STAT holiday (double pay).',
+    'Time Card: Overtime for the whole shift and STAT holiday.',
     'Contacts shared on every device; C4 \u201cPaperwork\u201d.' ] },
   { v: '4.29', from: '4.21', items: [
     'Supervisor: find reports by part or unit and open them.',
@@ -16926,7 +16930,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.51';
+  const APP_VER = '4.52';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
