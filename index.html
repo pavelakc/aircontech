@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.48</title>
+<title>AirconTech Field Reports v4.49</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.48</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.49</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -10311,9 +10311,11 @@ async function _iosPdfPageFrames(win, bytes, label) {
     '@media print{#bar,.pg{display:none}body{background:#fff}' +
     // Sized by the sheet's width, never by vh: in Safari's print, vh is the
     // screen's height, which shrank every page by 10-20 %.
-    '.pp{margin:0;width:100%;' +
+    // A fixed physical height (not vh) that fits inside Safari's margins;
+    // each form is then as large as the printable area allows.
+    '.pp{margin:0;width:100%;height:9.75in;display:flex;align-items:flex-start;justify-content:center;overflow:hidden;' +
     'page-break-after:always;break-after:page}.pp:last-child{page-break-after:auto;break-after:auto}' +
-    '.pp img{width:100%;height:auto;box-shadow:none}}' +
+    '.pp img{width:auto;height:auto;max-width:100%;max-height:100%;box-shadow:none}}' +
     '</style></head><body>' +
     '<div id="bar">' +
     '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="' + btn + ';background:#fff;color:#1a3560">&#8592; Back</button>' +
@@ -10337,6 +10339,17 @@ async function _iosPdfPageFrames(win, bytes, label) {
     // paused by the iPad while this window is in front), and without a
     // background worker, which hung on the iPad. Pictures are kept as blobs,
     // not text, to spare the iPad's memory on long shift packages.
+    // Safari prints a web page inside its own margins (with the address and
+    // page number in them), so a full Letter picture came out ~10 % small.
+    // The empty paper around the form is cut off first, so the form itself
+    // gets all of the printable area.
+    'function cropWhite(c){var w=c.width,h=c.height,d=c.getContext("2d").getImageData(0,0,w,h).data,' +
+    't=h,b=-1,l=w,r=-1;for(var y=0;y<h;y+=2)for(var i=0;i<w;i+=2){var k=(y*w+i)*4;' +
+    'if(d[k]<235||d[k+1]<235||d[k+2]<235){if(y<t)t=y;if(y>b)b=y;if(i<l)l=i;if(i>r)r=i}}' +
+    'if(b<0)return c;var p=Math.round(w*0.01);l=Math.max(0,l-p);t=Math.max(0,t-p);' +
+    'r=Math.min(w,r+p);b=Math.min(h,b+p);var o=document.createElement("canvas");o.width=r-l;o.height=b-t;' +
+    'var ox=o.getContext("2d");ox.fillStyle="#fff";ox.fillRect(0,0,o.width,o.height);' +
+    'ox.drawImage(c,l,t,r-l,b-t,0,0,r-l,b-t);return o}' +
     'async function toImages(scale){var L=window.pdfjsLib;if(!L||!window.pdfjsWorker)throw new Error("no pdf.js");' +
     'L.GlobalWorkerOptions.workerSrc=B+"pdf.worker.min.js";' +
     'var pdf=await L.getDocument({data:new Uint8Array(await (await fetch(U)).arrayBuffer())}).promise;' +
@@ -10345,7 +10358,8 @@ async function _iosPdfPageFrames(win, bytes, label) {
     'c=document.createElement("canvas");c.width=Math.round(vp.width);c.height=Math.round(vp.height);' +
     'var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);' +
     'await pg.render({canvasContext:x,viewport:vp}).promise;' +
-    'var bl=await new Promise(function(r){c.toBlob(r,"image/jpeg",0.9)});c.width=c.height=0;pg.cleanup();' +
+    'var cc=cropWhite(c);var bl=await new Promise(function(r){cc.toBlob(r,"image/jpeg",0.9)});' +
+    'c.width=c.height=0;cc.width=cc.height=0;pg.cleanup();' +
     'if(!bl)throw new Error("canvas");' +
     'var d=document.createElement("div");d.className="pp";var im=new Image();im.src=URL.createObjectURL(bl);' +
     'try{await im.decode()}catch(e){}d.appendChild(im);box.appendChild(d)}' +
@@ -16919,7 +16933,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.48';
+  const APP_VER = '4.49';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
