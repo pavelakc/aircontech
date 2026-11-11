@@ -20,7 +20,7 @@
   
   
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AirconTech Field Reports v4.47</title>
+<title>AirconTech Field Reports v4.48</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@300;400;500;600&display=swap');
 
@@ -1090,7 +1090,7 @@
     <div id="sync-dot-bar" style="width:9px;height:9px;border-radius:50%;
       background:#e74c3c;flex-shrink:0;transition:background .4s"></div>
     <span id="app-ver-badge" onclick="event.stopPropagation(); showWhatsNewHistory()" title="What's new in each version"
-      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.47</span>
+      style="font-size:10px;color:rgba(255,255,255,.55);padding:4px 8px;cursor:pointer;text-decoration:underline dotted">v4.48</span>
     <span id="sync-label" style="color:rgba(255,255,255,.85);font-size:11px;
       font-weight:600;white-space:nowrap">Offline</span>
     <span id="sync-count" style="color:rgba(255,255,255,.5);font-size:10px;margin-left:2px"></span>
@@ -3331,7 +3331,16 @@ function pdfBuildFieldReport(pdfDoc, PDFLib, d) {
   _over.C3 = drawWrapped(d.c3, 355, PDF_ROW0 + 6 * PDF_ROW_H + PDF_ROW_OFF, 14, WORK_COL_W, { size: 7.5 });
   (d.complications || []).slice(0, 3).forEach((t, i) =>
     drawFit(t, 355, PDF_ROW0 + (21 + i) * PDF_ROW_H + PDF_ROW_OFF, WORK_COL_W, { size: 7.5 }));
-  _over['Work Remaining'] = drawWrapped(d.remaining, 355, PDF_ROW0 + 26 * PDF_ROW_H + PDF_ROW_OFF, 4, WORK_COL_W, { size: 7.5 });
+  // The automatic COMPLETED / NOT COMPLETED stands alone in the middle of the
+  // box, in bold; anything the technician wrote keeps the usual layout.
+  if (wrIsAutoText(d.remaining)) {
+    const t = String(d.remaining).trim().toUpperCase(), sz = 10;
+    const w = bold.widthOfTextAtSize(t, sz);
+    draw(t, (352 + 587) / 2 - w / 2, PDF_ROW0 + 26.4 * PDF_ROW_H + PDF_ROW_OFF + 1, { size: sz, bold: true });
+    _over['Work Remaining'] = 0;
+  } else {
+    _over['Work Remaining'] = drawWrapped(d.remaining, 355, PDF_ROW0 + 26 * PDF_ROW_H + PDF_ROW_OFF, 4, WORK_COL_W, { size: 7.5 });
+  }
   // Losing text off the bottom of a field must never be silent.
   const _cut = Object.keys(_over).filter(k => _over[k] > 0);
   if (_cut.length) {
@@ -7288,6 +7297,10 @@ function setStatus(s) {
 // empty box or the other automatic word is replaced, so anything the
 // technician wrote stays, and the word itself can be edited freely.
 var WR_STATUS_TEXT = { completed: 'COMPLETED', incomplete: 'NOT COMPLETED' };
+function wrIsAutoText(v) {
+  const t = String(v || '').trim().toUpperCase();
+  return !!t && Object.values(WR_STATUS_TEXT).includes(t);
+}
 function wrStatusText(s) {
   const el = document.getElementById('f-remaining');
   const txt = WR_STATUS_TEXT[s];
@@ -9592,7 +9605,10 @@ function generatePrintHTML(d) {
     if (r === 39) return '<td colspan="15" class="bx b">C4 - Complications: (Minimum of 2)</td>';
     if (r >= 40 && r <= 42) return '<td colspan="15" class="bx">' + S(c4[r-40]||'') + '</td>';
     if (r === 43) return '<td colspan="15" class="bx b">WORK REMAINING</td>';
-    if (r === 44) return '<td colspan="15" rowspan="4" class="bx t">' + NL(d.remaining) + '</td>';
+    if (r === 44) return wrIsAutoText(d.remaining)
+      ? '<td colspan="15" rowspan="4" class="bx" style="text-align:center;vertical-align:middle;font-weight:700;font-size:1.15em">' +
+        S(String(d.remaining).trim().toUpperCase()) + '</td>'
+      : '<td colspan="15" rowspan="4" class="bx t">' + NL(d.remaining) + '</td>';
     return '';                                      // covered by a rowspan above
   };
 
@@ -10293,9 +10309,11 @@ async function _iosPdfPageFrames(win, bytes, label) {
     '.pp img{display:block;width:100%;height:auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4)}' +
     '@page{size:letter portrait;margin:0}' +
     '@media print{#bar,.pg{display:none}body{background:#fff}' +
-    '.pp{margin:0;width:auto;height:100vh;display:flex;align-items:center;justify-content:center;' +
+    // Sized by the sheet's width, never by vh: in Safari's print, vh is the
+    // screen's height, which shrank every page by 10-20 %.
+    '.pp{margin:0;width:100%;' +
     'page-break-after:always;break-after:page}.pp:last-child{page-break-after:auto;break-after:auto}' +
-    '.pp img{width:auto;height:auto;max-width:100%;max-height:100%;box-shadow:none}}' +
+    '.pp img{width:100%;height:auto;box-shadow:none}}' +
     '</style></head><body>' +
     '<div id="bar">' +
     '<button onclick="window.close();setTimeout(function(){history.back()},150)" style="' + btn + ';background:#fff;color:#1a3560">&#8592; Back</button>' +
@@ -13033,6 +13051,14 @@ function mergeDbList(type, localList, localMeta, cloudList, cloudMeta) {
   return { list, meta };
 }
 
+function _canonJson(v) {
+  if (Array.isArray(v)) return '[' + v.map(_canonJson).join(',') + ']';
+  if (v && typeof v === 'object') {
+    return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + _canonJson(v[k])).join(',') + '}';
+  }
+  return JSON.stringify(v === undefined ? null : v);
+}
+
 async function syncDbPullPush(force) {
   if (!window._sbClient) return { ok: false, reason: 'offline' };
   let changed = 0, pulled = 0, missing = false;
@@ -13103,8 +13129,12 @@ async function syncDbPullPush(force) {
     // caller has to know: the dropdowns and the open table are still showing
     // the old list until they are rebuilt.
     if (afterLocal !== beforeLocal) pulled++;
+    // Compared with sorted keys: the database hands JSON back with its keys
+    // in its own order, so a plain comparison always saw a difference and
+    // every pull was followed by pushing all seven lists back - which in turn
+    // made every other open copy download them all again, round and round.
     if (merged.list.length !== cloudList.length ||
-        JSON.stringify(merged.meta) !== JSON.stringify(cloudMeta)) {
+        _canonJson(merged.meta) !== _canonJson(cloudMeta)) {
       try {
         const ts = new Date().toISOString();
         const up = await _sbClient.from('shared_db').upsert({
@@ -16889,7 +16919,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // literal too (so they read correctly if this script ever fails early),
   // but they are overwritten from APP_VER here — before, all three were
   // hand-edited separately and the badge sat at 3.36 for five releases.
-  const APP_VER = '4.47';
+  const APP_VER = '4.48';
   try {
     const _vb = document.getElementById('app-ver-badge');
     if (_vb) _vb.textContent = 'v' + APP_VER;
